@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Neon Highway - Championship Port</title>
+    <title>3D Neon Highway - Championship Port (Firebase)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -16,7 +16,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #020208;
+            background-color: #010105;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         #canvas-container {
@@ -263,6 +263,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/DRACOLoader.js"></script>
+
+    <!-- ফায়ারবেস স্ক্রিপ্ট লাইব্রেরিস -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
 
@@ -334,6 +339,21 @@
     <div id="canvas-container"></div>
 
     <script>
+        // --- ফায়ারবেস কনফিগারেশন এবং ইনিশিয়ালাইজেশন ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBFKWIm1kUaP47rsHtEEP05G66-SSRsvwA",
+            authDomain: "gamil-sever.firebaseapp.com",
+            databaseURL: "https://gamil-sever-default-rtdb.firebaseio.com",
+            projectId: "gamil-sever",
+            storageBucket: "gamil-sever.firebasestorage.app",
+            messagingSenderId: "895391304528",
+            appId: "1:895391304528:web:4b86c59ce3163607beba55"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
         // --- Core Engine variables ---
         let scene, camera, renderer;
         let car = null;
@@ -353,8 +373,6 @@
         let gameActive = false;
         let playerDistance = 0;
         let aiDistance = 0;
-        
-        // Let targetDistance ডাইনামিক রিক্যালকুলেশনের জন্য সংশোধন করা হলো (const থেকে let এ পরিবর্তন)
         let targetDistance = 10000; 
 
         let baseSpeed = 1.2; 
@@ -383,11 +401,15 @@
         let isBoosting = false;
         let powerCharge = 100; 
 
-        // Session variables
+        // Session & Online multiplayer variables
         let currentUser = null;
         let raceMode = 'single'; 
         let isHost = true; 
         let matchId = '';
+
+        // ফায়ারবেস রিয়েল-টাইম সিঙ্কিং রেফারেন্স
+        let mySyncRef = null;
+        let oppSyncRef = null;
 
         // AI learning variables
         let playerLaneShifts = 0;
@@ -397,7 +419,6 @@
         // --- Init Environment & Safe Render ---
         function init() {
             try {
-                // সেশন ও গেম কনফিগারেশন লোড করা
                 loadGameConfig();
 
                 const container = document.getElementById('canvas-container');
@@ -431,6 +452,7 @@
                 createAiCar(); 
                 
                 setupInputEvents();
+                initOnlineMatchSync(); // ফায়ারবেস সিঙ্ক ইনিশিয়ালাইজেশন
                 
                 gameActive = true;
                 animate(); 
@@ -450,20 +472,18 @@
                 if (session) {
                     currentUser = JSON.parse(session);
                 } else {
-                    // যদি ইউজার সেশন ডাটা না থাকে (Direct Test) তবে গেস্ট হিসেবে রানিং করা হবে (ক্ল্যাশ ফিক্স)
                     currentUser = {
                         uid: "USR-GUEST",
                         username: "GUEST",
-                        stats: { wins: 0, losses: 0, copiedSkill: null }
+                        stats: { wins: 0, losses: 0, copiedSkill: "" }
                     };
                 }
 
                 raceMode = localStorage.getItem('race_mode') || 'single';
                 targetDistance = parseInt(localStorage.getItem('race_target_distance')) || 10000;
-                isHost = localStorage.getItem('is_host') !== 'false'; // Default to true
+                isHost = localStorage.getItem('is_host') !== 'false'; 
                 matchId = localStorage.getItem('match_id') || 'TEST_SESSION';
 
-                // HUD লেবেল রি-অ্যাসাইনমেন্ট
                 if (raceMode === 'multiplayer') {
                     const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
                     const oppUid = localStorage.getItem('opponent_uid');
@@ -1084,53 +1104,59 @@
             aiCar.position.z = -15 + zDifference; 
         }
 
-        // --- Multiplayer Storage State Syncing Engine (Friend Match) ---
-        function handleMultiplayerSync() {
-            if (raceMode !== 'multiplayer' || !gameActive) return;
+        // --- Multiplayer Syncing Engine (ফায়ারবেস অনলাইন রিয়েল-টাইম মাল্টিপ্লেয়ার সিঙ্ক) ---
+        function initOnlineMatchSync() {
+            if (raceMode !== 'multiplayer') return;
 
-            const myDistKey = isHost ? `match_${matchId}_p1_dist` : `match_${matchId}_p2_dist`;
-            const myLaneKey = isHost ? `match_${matchId}_p1_lane` : `match_${matchId}_p2_lane`;
-            const myYKey = isHost ? `match_${matchId}_p1_y` : `match_${matchId}_p2_y`;
-            const myCrashKey = isHost ? `match_${matchId}_p1_crash` : `match_${matchId}_p2_crash`;
-            
-            const oppDistKey = isHost ? `match_${matchId}_p2_dist` : `match_${matchId}_p1_dist`;
-            const oppLaneKey = isHost ? `match_${matchId}_p2_lane` : `match_${matchId}_p1_lane`;
-            const oppYKey = isHost ? `match_${matchId}_p2_y` : `match_${matchId}_p1_y`;
-            const oppCrashKey = isHost ? `match_${matchId}_p2_crash` : `match_${matchId}_p1_crash`;
+            const myNode = isHost ? 'p1' : 'p2';
+            const oppNode = isHost ? 'p2' : 'p1';
 
-            // ১. নিজের গাড়ির ডাটা লোকাল স্টোরেজে রাইট (Write) করা
-            localStorage.setItem(myDistKey, playerDistance);
-            localStorage.setItem(myLaneKey, targetLaneIndex);
-            localStorage.setItem(myYKey, car ? car.position.y : 0.05);
-            localStorage.setItem(myCrashKey, crashPenaltyTimer);
+            mySyncRef = database.ref(`matches/${matchId}/${myNode}`);
+            oppSyncRef = database.ref(`matches/${matchId}/${oppNode}`);
 
-            // ২. অপোনেন্টের রিয়েল-টাইম ডাটা লোকাল রিড (Read) করা
-            const oppDist = parseFloat(localStorage.getItem(oppDistKey)) || 0;
-            const oppLane = parseInt(localStorage.getItem(oppLaneKey)) || 3;
-            const oppY = parseFloat(localStorage.getItem(oppYKey)) || 0.05;
-            const oppCrash = parseFloat(localStorage.getItem(oppCrashKey)) || 0;
+            // অপোনেন্টের রিয়েল-টাইম ডাটা লিসেনার
+            oppSyncRef.on('value', (snapshot) => {
+                const oppData = snapshot.val();
+                if (oppData && gameActive) {
+                    aiDistance = oppData.dist || 0;
+                    const oppLane = oppData.lane || 3;
+                    const oppY = oppData.y || 0.05;
+                    const oppCrash = oppData.crash || 0;
 
-            aiDistance = oppDist; 
+                    // ৩ডি থ্রিজেএস ভিউপোর্টে অপোনেন্টের কার পজিশন অ্যানিমেট করা
+                    if (aiCar) {
+                        const targetX = lanePositions[oppLane];
+                        aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.15);
+                        aiCar.position.y = THREE.MathUtils.lerp(aiCar.position.y, oppY, 0.2);
 
-            // ৩. অপোনেন্টের গাড়ি স্ক্রিনে অ্যানিমেট করা
-            if (aiCar) {
-                const targetX = lanePositions[oppLane];
-                aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.15);
-                aiCar.position.y = THREE.MathUtils.lerp(aiCar.position.y, oppY, 0.2);
+                        if (oppCrash > 0) {
+                            aiCar.rotation.y += 0.25; // অপোনেন্ট ক্র্যাশ করলে তার গাড়িও স্পিন করবে
+                        } else {
+                            aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.15);
+                        }
 
-                if (oppCrash > 0) {
-                    aiCar.rotation.y += 0.25; 
-                } else {
-                    aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.15);
+                        aiWheels.forEach(wheel => {
+                            wheel.rotation.x += currentSpeed * 0.45;
+                        });
+
+                        // Z-axis রিলেটিভ পজিশন আপডেট
+                        const zDifference = (aiDistance - playerDistance) * 0.15;
+                        aiCar.position.z = -15 + zDifference;
+                    }
                 }
+            });
+        }
 
-                aiWheels.forEach(wheel => {
-                    wheel.rotation.x += currentSpeed * 0.45; 
-                });
+        // নিজের ডাটা ফায়ারবেসে রাইট করা
+        function writeMyDataToFirebase() {
+            if (raceMode !== 'multiplayer' || !mySyncRef || !gameActive) return;
 
-                const zDifference = (aiDistance - playerDistance) * 0.15;
-                aiCar.position.z = -15 + zDifference;
-            }
+            mySyncRef.set({
+                dist: playerDistance,
+                lane: targetLaneIndex,
+                y: car ? car.position.y : 0.05,
+                crash: crashPenaltyTimer
+            });
         }
 
         // --- এআই এবং ট্রাফিকের সাথে কোলাইশন ও বাউন্স ফিজিক্স ---
@@ -1154,7 +1180,7 @@
                 camera.position.x += (Math.random() - 0.5) * 0.6;
             }
 
-            // এআই বনাম ট্রাফিক গাড়ির সংঘর্ষ
+            // এআই বনাম ট্রাফিক গাড়ির সংঘর্ষ (শুধু সিঙ্গেল প্লেয়ারে কার্যকর)
             if (raceMode === 'single') {
                 obstacles.forEach(obs => {
                     const obsX = obs.position.x;
@@ -1171,35 +1197,43 @@
             }
         }
 
-        // --- লার্নিং স্কিল সেভ করার মেকানিজম ---
+        // --- লার্নিং স্কিল ফায়ারবেসে সেভ করার মেকানিজম ---
         function saveDrivingSkillToAI() {
-            const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
-            const upToDateUser = userDb.find(u => u.uid === currentUser.uid);
+            if (currentUser.uid === "USR-GUEST") return;
 
-            if (upToDateUser) {
+            const fUser = auth.currentUser;
+            if (fUser) {
                 const laneShiftFrequency = playerLaneShifts / (targetDistance / 1000); 
-                
-                upToDateUser.stats.wins += 1;
-                upToDateUser.stats.copiedSkill = {
-                    baseSpeedMultiplier: 1.0 + (playerDistance * 0.000003),
-                    laneShiftFrequency: laneShiftFrequency,
-                    boostAggression: playerBoostsUsed
+                const newStats = {
+                    wins: (currentUser.stats.wins || 0) + 1,
+                    losses: currentUser.stats.losses || 0,
+                    copiedSkill: {
+                        baseSpeedMultiplier: 1.0 + (playerDistance * 0.000003),
+                        laneShiftFrequency: laneShiftFrequency,
+                        boostAggression: playerBoostsUsed
+                    }
                 };
 
-                localStorage.setItem('users_db', JSON.stringify(userDb));
-                localStorage.setItem('current_user', JSON.stringify(upToDateUser));
-                console.log("AI Bot copied your driving skills successfully!");
+                // ফায়ারবেস ক্লাউডে ডিরেক্ট রাইট
+                database.ref('users/' + fUser.uid + '/stats').set(newStats)
+                    .then(() => {
+                        console.log("Copied Skill saved safely to Firebase Cloud!");
+                    });
             }
         }
 
         function saveLossToDatabase() {
-            const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
-            const upToDateUser = userDb.find(u => u.uid === currentUser.uid);
+            if (currentUser.uid === "USR-GUEST") return;
 
-            if (upToDateUser) {
-                upToDateUser.stats.losses += 1;
-                localStorage.setItem('users_db', JSON.stringify(userDb));
-                localStorage.setItem('current_user', JSON.stringify(upToDateUser));
+            const fUser = auth.currentUser;
+            if (fUser) {
+                const newStats = {
+                    wins: currentUser.stats.wins || 0,
+                    losses: (currentUser.stats.losses || 0) + 1,
+                    copiedSkill: currentUser.stats.copiedSkill || ""
+                };
+
+                database.ref('users/' + fUser.uid + '/stats').set(newStats);
             }
         }
 
@@ -1217,30 +1251,45 @@
                 title.style.textShadow = "0 0 15px #00ffcc";
                 text.innerHTML = `You finished first and WON the highway race!<br>Distance: ${targetDistance}m`;
                 
-                if (currentUser.uid !== "USR-GUEST") {
-                    saveDrivingSkillToAI(); 
-                }
+                saveDrivingSkillToAI(); 
             } else {
                 title.innerText = "DEFEAT!";
                 title.style.color = "#ff0055";
                 title.style.textShadow = "0 0 15px #ff0055";
                 text.innerHTML = "Your opponent finished first. Better luck next time!<br>Your Distance: " + Math.round(playerDistance) + "m";
                 
-                if (currentUser.uid !== "USR-GUEST") {
-                    saveLossToDatabase(); 
-                }
+                saveLossToDatabase(); 
             }
             
+            // হোস্ট প্লেয়ার রেস শেষে ক্লাউড থেকে ম্যাচ নোডটি ক্লিন করবে
+            if (raceMode === 'multiplayer' && isHost) {
+                database.ref(`matches/${matchId}`).remove();
+            }
+
             document.getElementById('game-over').style.display = 'block';
         }
 
         // --- Exit to Port ---
         function handleExit() {
             if (raceMode === 'multiplayer') {
-                localStorage.removeItem(`match_${matchId}_p1_dist`);
-                localStorage.removeItem(`match_${matchId}_p2_dist`);
+                if (oppSyncRef) oppSyncRef.off();
+                if (isHost) {
+                    database.ref(`matches/${matchId}`).remove();
+                }
             }
             window.location.href = "home.html";
+        }
+
+        // --- Reset Game ---
+        function resetGame() {
+            window.location.reload();
+        }
+
+        // --- Window Resize ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         // --- Animation Loop ---
@@ -1250,7 +1299,6 @@
             if (gameActive) {
                 const calculatedSpeed = Math.round(currentSpeed * 310);
                 
-                // প্লেয়ারের ডিস্টেন্স হিসাব
                 if (currentSpeed > 0.05) {
                     playerDistance += currentSpeed * 4.5; 
                     score = Math.round(playerDistance);
@@ -1261,7 +1309,7 @@
                 handleSpeedLogic();
                 handleJumpPhysics();
                 handleAiDriving(); 
-                handleMultiplayerSync(); 
+                writeMyDataToFirebase(); // ফায়ারবেসে নিজের পজিশন প্রতি ফ্রেমে আপডেট করা হচ্ছে
                 checkCollisionAndBumping(); 
 
                 // Race Result Check
@@ -1271,7 +1319,7 @@
                     showRaceResult(false); 
                 }
 
-                // HUD updates
+                // HUD Progress bar updates
                 const playerPercent = Math.min(100, (playerDistance / targetDistance) * 100);
                 const aiPercent = Math.min(100, (aiDistance / targetDistance) * 100);
                 
