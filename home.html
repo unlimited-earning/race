@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Neon Highway - Dashboard</title>
+    <title>Neon Highway - Dashboard (Firebase)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -170,7 +170,7 @@
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-top: 25px;
-            pointer-events: none; /* কার্ড ক্লিকেই কাজ করবে */
+            pointer-events: none;
         }
         .menu-card:hover .card-btn {
             background: #00ffcc;
@@ -255,6 +255,11 @@
             pointer-events: auto;
         }
     </style>
+
+    <!-- ফায়ারবেস স্ক্রিপ্ট লাইব্রেরিস -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
 
@@ -264,7 +269,7 @@
         <!-- Navigation Panel -->
         <div class="nav-panel">
             <div class="user-info">
-                <h2 id="user-display">Driver: Loading...</h2>
+                <h2 id="user-display">Driver: Connection Loading...</h2>
                 <p>LICENSE UID: <span id="uid-display">USR-000000</span></p>
             </div>
             <button class="logout-btn" onclick="handleLogout()">DISCONNECT</button>
@@ -323,45 +328,56 @@
     </div>
 
     <script>
+        // --- ফায়ারবেস কনফিগারেশন এবং ইনিশিয়ালাইজেশন ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBFKWIm1kUaP47rsHtEEP05G66-SSRsvwA",
+            authDomain: "gamil-sever.firebaseapp.com",
+            databaseURL: "https://gamil-sever-default-rtdb.firebaseio.com",
+            projectId: "gamil-sever",
+            storageBucket: "gamil-sever.firebasestorage.app",
+            messagingSenderId: "895391304528",
+            appId: "1:895391304528:web:4b86c59ce3163607beba55"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
         let currentUser = null;
 
-        // --- Safe Auth Validation with Auto-repair ---
+        // --- Safe Auth State Observer (ফায়ারবেস সেশন গার্ড) ---
         function checkSession() {
-            try {
-                const session = localStorage.getItem('current_user');
-                if (!session) {
+            auth.onAuthStateChanged((user) => {
+                if (!user) {
+                    // ফায়ারবেসে সাইন-ইন সেশন না থাকলে মেইন পেজে রিডিরেক্ট
+                    localStorage.removeItem('current_user');
                     window.location.href = "index.html";
-                    return;
+                } else {
+                    // রিয়েল-টাইম ডাটাবেস লিসেনার (Realtime Live Data Listener)
+                    database.ref('users/' + user.uid).on('value', (snapshot) => {
+                        const userData = snapshot.val();
+                        if (userData) {
+                            currentUser = {
+                                firebaseUid: user.uid,
+                                uid: userData.uid,
+                                username: userData.username,
+                                stats: userData.stats || { wins: 0, losses: 0, copiedSkill: "" }
+                            };
+
+                            // লোকাল ক্যাশ আপডেট
+                            localStorage.setItem('current_user', JSON.stringify(currentUser));
+                            renderDashboard();
+                        }
+                    }, (error) => {
+                        console.error("Database read cancelled: ", error);
+                    });
                 }
-                currentUser = JSON.parse(session);
-
-                // অবজেক্টের স্ট্রাকচারাল রি-চেক (ক্র্যাশ বাইপাস করার জন্য)
-                if (!currentUser.stats) {
-                    currentUser.stats = { wins: 0, losses: 0, copiedSkill: null };
-                }
-
-                // লাইভ ডাটাবেস থেকে রিড করা
-                const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
-                const upToDateUser = userDb.find(u => u.uid === currentUser.uid);
-
-                if (upToDateUser) {
-                    if (!upToDateUser.stats) {
-                        upToDateUser.stats = { wins: 0, losses: 0, copiedSkill: null };
-                    }
-                    currentUser.stats = upToDateUser.stats;
-                    localStorage.setItem('current_user', JSON.stringify(currentUser));
-                }
-
-                renderDashboard();
-            } catch (error) {
-                console.error("Session crash recovery triggered. Resetting sessional keys.", error);
-                localStorage.removeItem('current_user');
-                window.location.href = "index.html";
-            }
+            });
         }
 
         // --- Render UI Data ---
         function renderDashboard() {
+            if (!currentUser) return;
             document.getElementById('user-display').innerText = "Driver: " + currentUser.username;
             document.getElementById('uid-display').innerText = currentUser.uid;
 
@@ -375,10 +391,14 @@
             document.getElementById('stat-ratio').innerText = ratio + "%";
         }
 
-        // --- Logout System ---
+        // --- Secure Logout System ---
         function handleLogout() {
-            localStorage.removeItem('current_user');
-            window.location.href = "index.html";
+            auth.signOut().then(() => {
+                localStorage.removeItem('current_user');
+                window.location.href = "index.html";
+            }).catch((error) => {
+                console.error("Signout error: ", error);
+            });
         }
 
         // --- Distance Modal Controls ---
@@ -391,13 +411,9 @@
 
         // --- Configure and Start Solo AI Race ---
         function startSingleRace(distance) {
-            // গেম সেটিংস লোকাল স্টোরেজে সংরক্ষণ
             localStorage.setItem('race_mode', 'single');
             localStorage.setItem('race_target_distance', distance);
-            
             closeDistanceModal();
-            
-            // গেম স্ক্রিনে প্রবেশ
             window.location.href = "game.html";
         }
 
