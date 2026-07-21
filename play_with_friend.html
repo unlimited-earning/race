@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Neon Highway - Multiplayer Lobby (Firebase)</title>
+    <title>Neon Highway - Multiplayer Lobby (Firebase Pro)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -321,7 +321,7 @@
         const database = firebase.database();
 
         let currentUser = null;
-        let myOutgoingMatchRef = null; // আউটগোয়িং রিকোয়েস্ট ট্র্যাক রাখার রেফারেন্স
+        let myOutgoingMatchRef = null; 
 
         // --- Safe Auth State Observer ---
         function checkSession() {
@@ -333,20 +333,18 @@
                     currentUser = JSON.parse(session);
                     document.getElementById('my-uid').innerText = currentUser.uid;
 
-                    // রিয়েল-টাইম ডাটা লিসেনার পোর্ট অন করা
                     initRealtimeListeners();
                 }
             });
         }
 
         function goBack() {
-            // লিভ করার আগে ডেটাবেস লিসেনার রিমুভ করা
             if (myOutgoingMatchRef) myOutgoingMatchRef.off();
             database.ref('lobby_requests').orderByChild('toUid').equalTo(currentUser.uid).off();
             window.location.href = "home.html";
         }
 
-        // --- Challenge Request Sender with Firebase Lookups ---
+        // --- Challenge Request Sender ---
         function sendDuelRequest(event) {
             event.preventDefault();
 
@@ -362,7 +360,7 @@
             btnSubmit.disabled = true;
             btnSubmit.innerText = "Searching Driver...";
 
-            // ফায়ারবেস ইউআইডি ডিরেক্টরি টেবিলে রিকোয়েস্টেড ড্রাইভার খোঁজা
+            // ফায়ারবেস ইউআইডি ডিরেক্টরিতে অপোনেন্ট খোঁজা
             database.ref('uid_lookup/' + targetUid).once('value')
                 .then((snapshot) => {
                     const targetFirebaseUid = snapshot.val();
@@ -389,14 +387,14 @@
                                 status: 'pending'
                             };
 
-                            // ফায়ারবেস রিয়েল-টাইম ডাটাবেসে রিকোয়েস্ট পুশ
+                            // ফায়ারবেস ডাটাবেসে রিকোয়েস্ট পুশ
                             database.ref('lobby_requests/' + matchId).set(challengeData)
                                 .then(() => {
                                     showFeedback(`Challenge sent to ${targetUser.username}! Waiting...`, "success");
                                     btnSubmit.disabled = false;
                                     btnSubmit.innerText = "Send Duel Request";
 
-                                    // হোস্ট প্লেয়ার (Player 1) হিসেবে ম্যাচ কনফিগারেশন ক্যাশ সেভ করা
+                                    // হোস্ট প্লেয়ার (Player 1) হিসেবে ম্যাচ কনফিগারেশন লোকাল ক্যাশ সেভ করা
                                     localStorage.setItem('race_mode', 'multiplayer');
                                     localStorage.setItem('race_target_distance', distance);
                                     localStorage.setItem('opponent_uid', targetUid);
@@ -415,9 +413,8 @@
                 });
         }
 
-        // --- Real-time Listeners (ফায়ারবেস রিয়েল-টাইম পুশ নোটিফিকেশন লুপ) ---
+        // --- Live Incoming Challenge Listener ---
         function initRealtimeListeners() {
-            // আমাকে পাঠানো ইনকামিং চ্যালেঞ্জগুলো লাইভ ট্র্যাক করা
             database.ref('lobby_requests').orderByChild('toUid').equalTo(currentUser.uid)
                 .on('value', (snapshot) => {
                     const requestsObj = snapshot.val();
@@ -434,7 +431,7 @@
                 });
         }
 
-        // --- Track My Outgoing Challenge Acceptance ---
+        // --- Track Outgoing Challenge ---
         function trackOutgoingChallenge(matchId) {
             if (myOutgoingMatchRef) myOutgoingMatchRef.off();
 
@@ -442,16 +439,14 @@
             myOutgoingMatchRef.on('value', (snapshot) => {
                 const req = snapshot.val();
                 if (req && req.status === 'accepted') {
-                    // ডেটাবেস লবি থেকে রেকর্ড মুছে ফেলা (যাতে ডাটাবেস ক্লিন থাকে)
-                    myOutgoingMatchRef.remove();
+                    // লবি রিকোয়েস্ট নোড ফায়ারবেস থেকে ডিলিট করার কোনো প্রয়োজন নেই এখানে, game.html এ হোস্ট নিজে ডিলিট করবে ম্যাচ শেষে
                     myOutgoingMatchRef.off();
-
                     triggerMatchCountdown(req);
                 }
             });
         }
 
-        // --- Render Incoming Challenges UI ---
+        // --- Render UI ---
         function renderIncomingList(requests) {
             const container = document.getElementById('incoming-list');
             if (requests.length === 0) {
@@ -506,7 +501,6 @@
 
         // --- Synced Countdown Timer ---
         function triggerMatchCountdown(matchData) {
-            // লবি লিসেনার অফ করা
             database.ref('lobby_requests').orderByChild('toUid').equalTo(currentUser.uid).off();
 
             const overlay = document.getElementById('countdown-overlay');
