@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Highway - Dashboard</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            background-color: #03030c;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        /* Cyberpunk Grid Background */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 200, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 200, 0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+            background-position: center;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .main-container {
+            position: relative;
+            z-index: 5;
+            width: 90%;
+            max-width: 900px;
+            margin: 40px auto;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* Header Navigation Panel */
+        .nav-panel {
+            background: rgba(10, 10, 25, 0.85);
+            border: 1px solid rgba(0, 255, 200, 0.2);
+            border-radius: 12px;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+        .user-info h2 {
+            font-size: 20px;
+            color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 200, 0.3);
+            text-transform: uppercase;
+        }
+        .user-info p {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 3px;
+            font-family: monospace;
+        }
+        .logout-btn {
+            background: rgba(255, 0, 85, 0.15);
+            border: 1px solid rgba(255, 0, 85, 0.4);
+            color: #ff0055;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .logout-btn:hover {
+            background: rgba(255, 0, 85, 0.3);
+            box-shadow: 0 0 10px rgba(255, 0, 85, 0.4);
+            transform: scale(1.02);
+        }
+
+        /* Dashboard Statistics Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .stat-card {
+            background: rgba(10, 10, 25, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        .stat-val {
+            font-size: 22px;
+            font-weight: bold;
+            font-family: monospace;
+            margin-top: 5px;
+        }
+
+        /* Main Menu Cards (Selection Modes) */
+        .menu-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+        @media (max-width: 650px) {
+            .menu-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .menu-card {
+            background: rgba(10, 10, 25, 0.9);
+            border: 2px solid rgba(0, 255, 200, 0.2);
+            border-radius: 16px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: 0.3s;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            min-height: 280px;
+        }
+        .menu-card:hover {
+            border-color: #00ffcc;
+            box-shadow: 0 0 25px rgba(0, 255, 200, 0.15);
+            transform: translateY(-5px);
+        }
+        .card-title h3 {
+            font-size: 22px;
+            letter-spacing: 1px;
+            color: #fff;
+            text-shadow: 0 0 5px rgba(255,255,255,0.2);
+            margin-bottom: 10px;
+        }
+        .card-title p {
+            color: rgba(255,255,255,0.6);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .card-btn {
+            width: 100%;
+            background: transparent;
+            border: 2px solid #00ffcc;
+            color: #00ffcc;
+            padding: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 25px;
+        }
+        .menu-card:hover .card-btn {
+            background: #00ffcc;
+            color: #03030c;
+            box-shadow: 0 0 15px rgba(0, 255, 200, 0.4);
+        }
+
+        /* Customize Multi card to highlight */
+        .card-multi {
+            border-color: rgba(255, 0, 85, 0.2);
+        }
+        .card-multi:hover {
+            border-color: #ff0055;
+            box-shadow: 0 0 25px rgba(255, 0, 85, 0.15);
+        }
+        .card-multi .card-btn {
+            border-color: #ff0055;
+            color: #ff0055;
+        }
+        .card-multi:hover .card-btn {
+            background: #ff0055;
+            color: #fff;
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.4);
+        }
+
+        /* Distance Selection Modal Overlay */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(3, 3, 12, 0.9);
+            z-index: 10;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background: rgba(10, 10, 25, 0.95);
+            border: 2px solid #00ffcc;
+            width: 90%;
+            max-width: 400px;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 0 30px rgba(0, 255, 200, 0.25);
+            text-align: center;
+        }
+        .modal-content h3 {
+            font-size: 20px;
+            color: #00ffcc;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+        .distance-option {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 15px;
+            transition: 0.2s;
+        }
+        .distance-option:hover {
+            background: rgba(0, 255, 200, 0.1);
+            border-color: #00ffcc;
+            color: #00ffcc;
+        }
+        .close-modal {
+            margin-top: 15px;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            font-size: 13px;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-grid"></div>
+
+    <div class="main-container">
+        <!-- Navigation Panel -->
+        <div class="nav-panel">
+            <div class="user-info">
+                <h2 id="user-display">Driver: Loading...</h2>
+                <p>LICENSE UID: <span id="uid-display">USR-000000</span></p>
+            </div>
+            <button class="logout-btn" onclick="handleLogout()">DISCONNECT</button>
+        </div>
+
+        <!-- Career Statistics Dashboard -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <p style="color: rgba(255,255,255,0.6); font-size: 11px; text-transform: uppercase;">Championship Wins</p>
+                <div class="stat-val" style="color: #00ffcc; text-shadow: 0 0 5px rgba(0,255,200,0.3);" id="stat-wins">0</div>
+            </div>
+            <div class="stat-card">
+                <p style="color: rgba(255,255,255,0.6); font-size: 11px; text-transform: uppercase;">Races Lost</p>
+                <div class="stat-val" style="color: #ff0055; text-shadow: 0 0 5px rgba(255,0,85,0.3);" id="stat-losses">0</div>
+            </div>
+            <div class="stat-card">
+                <p style="color: rgba(255,255,255,0.6); font-size: 11px; text-transform: uppercase;">Win Ratio</p>
+                <div class="stat-val" style="color: #ffff00;" id="stat-ratio">0%</div>
+            </div>
+        </div>
+
+        <!-- Menu Cards Selection Grid -->
+        <div class="menu-grid">
+            <!-- Single Player Card -->
+            <div class="menu-card" onclick="openDistanceModal()">
+                <div class="card-title">
+                    <h3>SOLO RUN</h3>
+                    <p style="color: #00ffcc; font-size: 11px; margin-bottom: 8px;">VS ARTIFICIAL INTELLIGENCE</p>
+                    <p>Race against the Golden AI Cyber-bot. Challenge yourself across dynamic distances and improve your reaction times.</p>
+                </div>
+                <button class="card-btn">Configure Race</button>
+            </div>
+
+            <!-- Multiplayer Card -->
+            <div class="menu-card card-multi" onclick="navigateToMultiplayer()">
+                <div class="card-title">
+                    <h3>P2P DUEL</h3>
+                    <p style="color: #ff0055; font-size: 11px; margin-bottom: 8px;">PLAY WITH FRIEND</p>
+                    <p>Connect with other drivers globally. Matchmake using their unique Driver License UID and duel in real-time.</p>
+                </div>
+                <button class="card-btn">Search Drivers</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Distance Selection Overlay Modal -->
+    <div class="modal" id="distance-modal">
+        <div class="modal-content">
+            <h3>SELECT RACE DISTANCE</h3>
+            <div class="distance-option" onclick="startSingleRace(10000)">10,000 METERS (10 KM)</div>
+            <div class="distance-option" onclick="startSingleRace(30000)">30,000 METERS (30 KM)</div>
+            <div class="distance-option" onclick="startSingleRace(50000)">50,000 METERS (50 KM)</div>
+            <div class="distance-option" onclick="startSingleRace(100000)">100,000 METERS (100 KM)</div>
+            <div class="close-modal" onclick="closeDistanceModal()">Cancel Configuration</div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        // --- Auth Validation ---
+        function checkSession() {
+            const session = localStorage.getItem('current_user');
+            if (!session) {
+                // সেশন না থাকলে লগইন পেজে ব্যাক
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = JSON.parse(session);
+
+            // ডাটাবেস থেকে রিয়েল-টাইম আপডেট নেওয়া (Wins/Losses)
+            const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
+            const upToDateUser = userDb.find(u => u.uid === currentUser.uid);
+
+            if (upToDateUser) {
+                currentUser.stats = upToDateUser.stats;
+                // সেশন ডাটা আপডেট করা
+                localStorage.setItem('current_user', JSON.stringify(currentUser));
+            }
+
+            renderDashboard();
+        }
+
+        // --- Render UI Data ---
+        function renderDashboard() {
+            document.getElementById('user-display').innerText = "Driver: " + currentUser.username;
+            document.getElementById('uid-display').innerText = currentUser.uid;
+
+            const wins = currentUser.stats.wins || 0;
+            const losses = currentUser.stats.losses || 0;
+            const totalRaces = wins + losses;
+            const ratio = totalRaces > 0 ? Math.round((wins / totalRaces) * 100) : 0;
+
+            document.getElementById('stat-wins').innerText = wins;
+            document.getElementById('stat-losses').innerText = losses;
+            document.getElementById('stat-ratio').innerText = ratio + "%";
+        }
+
+        // --- Logout System ---
+        function handleLogout() {
+            localStorage.removeItem('current_user');
+            window.location.href = "index.html";
+        }
+
+        // --- Distance Modal Controls ---
+        function openDistanceModal() {
+            document.getElementById('distance-modal').style.display = 'flex';
+        }
+        function closeDistanceModal() {
+            document.getElementById('distance-modal').style.display = 'none';
+        }
+
+        // --- Configure and Start Solo AI Race ---
+        function startSingleRace(distance) {
+            // গেম সেটিংস লোকাল স্টোরেজে সংরক্ষণ
+            localStorage.setItem('race_mode', 'single');
+            localStorage.setItem('race_target_distance', distance);
+            
+            closeDistanceModal();
+            
+            // গেম স্ক্রিনে প্রবেশ
+            window.location.href = "game.html";
+        }
+
+        // --- Navigate to Multiplayer Room ---
+        function navigateToMultiplayer() {
+            window.location.href = "play_with_friend.html";
+        }
+
+        // Start initialization
+        window.addEventListener('DOMContentLoaded', checkSession);
+    </script>
+</body>
+</html>
