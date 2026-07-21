@@ -16,7 +16,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #010105;
+            background-color: #020208;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         #canvas-container {
@@ -259,7 +259,7 @@
             box-shadow: 0 5px 25px rgba(255, 0, 85, 0.6);
         }
     </style>
-    <!-- Stable WebGL CDN -->
+    <!-- Stable Global Script CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/DRACOLoader.js"></script>
@@ -353,6 +353,8 @@
         let gameActive = false;
         let playerDistance = 0;
         let aiDistance = 0;
+        
+        // Let targetDistance ডাইনামিক রিক্যালকুলেশনের জন্য সংশোধন করা হলো (const থেকে let এ পরিবর্তন)
         let targetDistance = 10000; 
 
         let baseSpeed = 1.2; 
@@ -383,11 +385,11 @@
 
         // Session variables
         let currentUser = null;
-        let raceMode = 'single'; // 'single' or 'multiplayer'
-        let isHost = true; // Host/Player 1 = true, Guest/Player 2 = false
+        let raceMode = 'single'; 
+        let isHost = true; 
         let matchId = '';
 
-        // AI learning variables (Driver profile analysis)
+        // AI learning variables
         let playerLaneShifts = 0;
         let playerBoostsUsed = 0;
         let lastLaneIndex = 2;
@@ -441,32 +443,41 @@
             }
         }
 
-        // --- Load Game Config & Modes ---
+        // --- Safe Config Loader ---
         function loadGameConfig() {
-            const session = localStorage.getItem('current_user');
-            if (!session) {
-                window.location.href = "index.html";
-                return;
-            }
-            currentUser = JSON.parse(session);
+            try {
+                const session = localStorage.getItem('current_user');
+                if (session) {
+                    currentUser = JSON.parse(session);
+                } else {
+                    // যদি ইউজার সেশন ডাটা না থাকে (Direct Test) তবে গেস্ট হিসেবে রানিং করা হবে (ক্ল্যাশ ফিক্স)
+                    currentUser = {
+                        uid: "USR-GUEST",
+                        username: "GUEST",
+                        stats: { wins: 0, losses: 0, copiedSkill: null }
+                    };
+                }
 
-            raceMode = localStorage.getItem('race_mode') || 'single';
-            targetDistance = parseInt(localStorage.getItem('race_target_distance')) || 10000;
-            isHost = localStorage.getItem('is_host') === 'true';
-            matchId = localStorage.getItem('match_id') || '';
+                raceMode = localStorage.getItem('race_mode') || 'single';
+                targetDistance = parseInt(localStorage.getItem('race_target_distance')) || 10000;
+                isHost = localStorage.getItem('is_host') !== 'false'; // Default to true
+                matchId = localStorage.getItem('match_id') || 'TEST_SESSION';
 
-            // HUD লেবেল সিঙ্ক
-            if (raceMode === 'multiplayer') {
-                const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
-                const oppUid = localStorage.getItem('opponent_uid');
-                const oppUser = userDb.find(u => u.uid === oppUid);
-                const oppName = oppUser ? oppUser.username.toUpperCase() : "OPPONENT";
+                // HUD লেবেল রি-অ্যাসাইনমেন্ট
+                if (raceMode === 'multiplayer') {
+                    const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
+                    const oppUid = localStorage.getItem('opponent_uid');
+                    const oppUser = userDb.find(u => u.uid === oppUid);
+                    const oppName = oppUser ? oppUser.username.toUpperCase() : "OPPONENT";
 
-                document.getElementById('p1-label').innerHTML = `<span>P1: YOU</span><span id="player-meters">0 / ${targetDistance}m</span>`;
-                document.getElementById('p2-label').innerHTML = `<span>P2: ${oppName}</span><span id="ai-meters">0 / ${targetDistance}m</span>`;
-            } else {
-                document.getElementById('p1-label').innerHTML = `<span>PLAYER (YOU)</span><span id="player-meters">0 / ${targetDistance}m</span>`;
-                document.getElementById('p2-label').innerHTML = `<span>AI BOT (GOLD)</span><span id="ai-meters">0 / ${targetDistance}m</span>`;
+                    document.getElementById('p1-label').innerHTML = `<span>P1: YOU</span><span id="player-meters">0 / ${targetDistance}m</span>`;
+                    document.getElementById('p2-label').innerHTML = `<span>P2: ${oppName}</span><span id="ai-meters">0 / ${targetDistance}m</span>`;
+                } else {
+                    document.getElementById('p1-label').innerHTML = `<span>PLAYER (YOU)</span><span id="player-meters">0 / ${targetDistance}m</span>`;
+                    document.getElementById('p2-label').innerHTML = `<span>AI BOT (GOLD)</span><span id="ai-meters">0 / ${targetDistance}m</span>`;
+                }
+            } catch (e) {
+                console.warn("Storage reading bypassed with defaults", e);
             }
         }
 
@@ -645,12 +656,11 @@
             spawnObstacles();
         }
 
-        // --- Create AI Bot Car (Opponent in single and multi) ---
+        // --- Create AI Bot Car ---
         function createAiCar() {
             aiCar = new THREE.Group();
             aiWheels = [];
 
-            // যদি মাল্টিপ্লেয়ার হয়, তবে অপোনেন্ট কার এর কালার নিয়ন ব্লু (P2) হবে, সোলো রেসে গোল্ডেন থাকবে
             const colorHex = (raceMode === 'multiplayer') ? 0x0088ff : 0xffaa00;
             const emissiveHex = (raceMode === 'multiplayer') ? 0x0088ff : 0xffea00;
 
@@ -832,6 +842,15 @@
             const randomLane = lanePositions[Math.floor(Math.random() * lanePositions.length)];
             const minZ = -120 - (index * 45);
             obs.position.set(randomLane, 0.05, minZ);
+            obs.rotation.y = 0;
+        }
+
+        // --- Trigger Jump ---
+        function triggerJump() {
+            if (!isJumping && gameActive) {
+                isJumping = true;
+                jumpVelocity = jumpStrength;
+            }
         }
 
         // --- Input Controls Setup ---
@@ -850,9 +869,7 @@
                     isBraking = true;
                 }
                 if (e.key === ' ' || e.key === 'Spacebar') triggerJump();
-                if (e.key === 'Shift') {
-                    isBoosting = true;
-                }
+                if (e.key === 'Shift') isBoosting = true;
             });
 
             window.addEventListener('keyup', (e) => {
@@ -947,13 +964,13 @@
                 }
             }
 
-            // নাইট্রো বুস্ট (স্পিড ৭৪০ কিমি সর্বোচ্চ)
+            // বুস্ট মেকানিজম (গতি ৭০০+ কিমি স্পর্শ করার বুস্ট রেট ২.০)
             let activeAcceleration = autoSpeedMode ? !isBraking : isAccelerating;
             if (isBoosting && powerCharge > 0 && activeAcceleration && currentSpeed > 0.1 && crashPenaltyTimer <= 0) {
                 targetSpeed = baseSpeed * 2.0; 
                 powerCharge = Math.max(0, powerCharge - 0.75); 
                 camera.fov = THREE.MathUtils.lerp(camera.fov, 82, 0.1); 
-                playerBoostsUsed += 1; // এআই কপি করার জন্য স্ট্যাটস বৃদ্ধি
+                playerBoostsUsed += 1;
             } else {
                 camera.fov = THREE.MathUtils.lerp(camera.fov, 60, 0.08);
             }
@@ -985,7 +1002,7 @@
             document.getElementById('power-bar').style.width = powerCharge + '%';
         }
 
-        // --- এআই বট ড্রাইভিং ও প্লেয়ার স্কিল কপিং মেকানিজম (Adaptive AI & Learning Engine) ---
+        // --- AI Bot Driving Logic (Single Player adaptive AI) ---
         function handleAiDriving() {
             if (!aiCar || !gameActive || raceMode === 'multiplayer') return;
 
@@ -996,18 +1013,14 @@
                 aiCrashPenaltyTimer -= 0.016;
             } else {
                 // --- প্লেয়ারের স্কিল কপি করা এআই মেকানিজম (Interactive AI Learner) ---
-                // ডাটাবেস থেকে প্লেয়ারের পূর্বের বিজয়ী ড্রাইভিং স্কিল লোড করা
                 const learnedSkill = currentUser.stats.copiedSkill;
                 
                 let skillSpeedFactor = 1.0;
-                let shiftProbability = 12; // ডিফল্ট সিলেকশন টাইম ফ্রেম
+                let shiftProbability = 12; 
 
                 if (learnedSkill) {
-                    // এআই প্লেয়ারের গতি এবং নাইট্রো ব্যবহারের আগ্রাসন কপি করবে
                     const boostBonus = (learnedSkill.boostAggression > 50) ? 0.1 : 0.0;
                     skillSpeedFactor = (learnedSkill.baseSpeedMultiplier || 1.0) + boostBonus;
-                    
-                    // প্লেয়ার ঘন ঘন লেন পরিবর্তন করলে এআই-ও ছটফটে থাকবে
                     shiftProbability = Math.max(6, Math.min(25, Math.round(20 / (learnedSkill.laneShiftFrequency || 1))));
                 }
 
@@ -1029,7 +1042,7 @@
                 wheel.rotation.x += aiSpeed * 0.45;
             });
 
-            // AI Traffic Avoidance
+            // AI Traffic Avoidance & Swerving
             let obstacleInLane = false;
             obstacles.forEach(obs => {
                 let obsRelativeZ = obs.position.z - aiCar.position.z;
@@ -1041,7 +1054,6 @@
                 }
             });
 
-            // প্লেয়ারের লেন পরিবর্তনের স্কিল ফ্রিকোয়েন্সি রিড করে এআই লেন পরিবর্তন করবে
             let shiftTriggerFrame = 12; 
             if (currentUser.stats.copiedSkill) {
                 shiftTriggerFrame = Math.max(6, Math.min(20, Math.round(15 / (currentUser.stats.copiedSkill.laneShiftFrequency || 1))));
@@ -1072,7 +1084,7 @@
             aiCar.position.z = -15 + zDifference; 
         }
 
-        // --- রিয়েল-টাইম মাল্টিপ্লেয়ার সিঙ্ক ইঞ্জিন (LocalStorage Syncing Engine for Friend Mode) ---
+        // --- Multiplayer Storage State Syncing Engine (Friend Match) ---
         function handleMultiplayerSync() {
             if (raceMode !== 'multiplayer' || !gameActive) return;
 
@@ -1086,37 +1098,36 @@
             const oppYKey = isHost ? `match_${matchId}_p2_y` : `match_${matchId}_p1_y`;
             const oppCrashKey = isHost ? `match_${matchId}_p2_crash` : `match_${matchId}_p1_crash`;
 
-            // ১. নিজের গাড়ির ডাটা রিয়েল-টাইমে রাইট (Write) করা
+            // ১. নিজের গাড়ির ডাটা লোকাল স্টোরেজে রাইট (Write) করা
             localStorage.setItem(myDistKey, playerDistance);
             localStorage.setItem(myLaneKey, targetLaneIndex);
             localStorage.setItem(myYKey, car ? car.position.y : 0.05);
             localStorage.setItem(myCrashKey, crashPenaltyTimer);
 
-            // ২. অপোনেন্টের রিয়েল-টাইম ডাটা রিড (Read) করা
+            // ২. অপোনেন্টের রিয়েল-টাইম ডাটা লোকাল রিড (Read) করা
             const oppDist = parseFloat(localStorage.getItem(oppDistKey)) || 0;
             const oppLane = parseInt(localStorage.getItem(oppLaneKey)) || 3;
             const oppY = parseFloat(localStorage.getItem(oppYKey)) || 0.05;
             const oppCrash = parseFloat(localStorage.getItem(oppCrashKey)) || 0;
 
-            aiDistance = oppDist; // প্রগ্রেস বার অপোনেন্টের অতিক্রান্ত দূরত্বে ম্যাপড হবে
+            aiDistance = oppDist; 
 
-            // ৩. থ্রি-ডি স্পেসে অপোনেন্টের গাড়িটি প্লেয়ারের স্ক্রিনে অ্যানিমেট করা
+            // ৩. অপোনেন্টের গাড়ি স্ক্রিনে অ্যানিমেট করা
             if (aiCar) {
                 const targetX = lanePositions[oppLane];
                 aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.15);
                 aiCar.position.y = THREE.MathUtils.lerp(aiCar.position.y, oppY, 0.2);
 
                 if (oppCrash > 0) {
-                    aiCar.rotation.y += 0.25; // অপোনেন্ট ক্র্যাশ করলে তার গাড়িও স্পিন করবে
+                    aiCar.rotation.y += 0.25; 
                 } else {
                     aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.15);
                 }
 
                 aiWheels.forEach(wheel => {
-                    wheel.rotation.x += currentSpeed * 0.45; // অপোনেন্টের চাকাও ঘুরবে
+                    wheel.rotation.x += currentSpeed * 0.45; 
                 });
 
-                // Z-axis রিলেটিভ পজিশন আপডেট
                 const zDifference = (aiDistance - playerDistance) * 0.15;
                 aiCar.position.z = -15 + zDifference;
             }
@@ -1160,15 +1171,13 @@
             }
         }
 
-        // --- লার্নিং স্কিল সেভ করার মেকানিজম (Learning Analytics System) ---
+        // --- লার্নিং স্কিল সেভ করার মেকানিজম ---
         function saveDrivingSkillToAI() {
-            // প্লেয়ার উইন হলে তার ড্রাইভিং স্টাইল ডাটাবেসে সেভ হবে
             const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
             const upToDateUser = userDb.find(u => u.uid === currentUser.uid);
 
             if (upToDateUser) {
-                // ড্রাইভিং অ্যানালিটিক্স হিসাব করা
-                const laneShiftFrequency = playerLaneShifts / (targetDistance / 1000); // প্রতি ১ কিমিতে লেন শিফট রেট
+                const laneShiftFrequency = playerLaneShifts / (targetDistance / 1000); 
                 
                 upToDateUser.stats.wins += 1;
                 upToDateUser.stats.copiedSkill = {
@@ -1208,10 +1217,8 @@
                 title.style.textShadow = "0 0 15px #00ffcc";
                 text.innerHTML = `You finished first and WON the highway race!<br>Distance: ${targetDistance}m`;
                 
-                if (raceMode === 'single') {
-                    saveDrivingSkillToAI(); // উইন হলে এআই প্লেয়ারের স্কিল কপি করবে
-                } else {
-                    saveDrivingSkillToAI(); // মাল্টিপ্লেয়ারে শুধু উইন কাউন্ট হবে
+                if (currentUser.uid !== "USR-GUEST") {
+                    saveDrivingSkillToAI(); 
                 }
             } else {
                 title.innerText = "DEFEAT!";
@@ -1219,7 +1226,9 @@
                 title.style.textShadow = "0 0 15px #ff0055";
                 text.innerHTML = "Your opponent finished first. Better luck next time!<br>Your Distance: " + Math.round(playerDistance) + "m";
                 
-                saveLossToDatabase(); // লস কাউন্ট ডাটাবেসে সেভ
+                if (currentUser.uid !== "USR-GUEST") {
+                    saveLossToDatabase(); 
+                }
             }
             
             document.getElementById('game-over').style.display = 'block';
@@ -1227,24 +1236,11 @@
 
         // --- Exit to Port ---
         function handleExit() {
-            // মাল্টিপ্লেয়ার সেশন কি ক্লিয়ার করা
             if (raceMode === 'multiplayer') {
                 localStorage.removeItem(`match_${matchId}_p1_dist`);
                 localStorage.removeItem(`match_${matchId}_p2_dist`);
             }
             window.location.href = "home.html";
-        }
-
-        // --- Reset Game ---
-        function resetGame() {
-            window.location.reload();
-        }
-
-        // --- Window Resize ---
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         // --- Animation Loop ---
@@ -1254,6 +1250,7 @@
             if (gameActive) {
                 const calculatedSpeed = Math.round(currentSpeed * 310);
                 
+                // প্লেয়ারের ডিস্টেন্স হিসাব
                 if (currentSpeed > 0.05) {
                     playerDistance += currentSpeed * 4.5; 
                     score = Math.round(playerDistance);
@@ -1264,17 +1261,17 @@
                 handleSpeedLogic();
                 handleJumpPhysics();
                 handleAiDriving(); 
-                handleMultiplayerSync(); // মাল্টিপ্লেয়ার রিয়েল-টাইম সিঙ্কিং ইঞ্জিন
+                handleMultiplayerSync(); 
                 checkCollisionAndBumping(); 
 
-                // Race Goal check
+                // Race Result Check
                 if (playerDistance >= targetDistance) {
                     showRaceResult(true); 
                 } else if (aiDistance >= targetDistance) {
                     showRaceResult(false); 
                 }
 
-                // HUD Progress bar updates
+                // HUD updates
                 const playerPercent = Math.min(100, (playerDistance / targetDistance) * 100);
                 const aiPercent = Math.min(100, (aiDistance / targetDistance) * 100);
                 
@@ -1298,7 +1295,7 @@
                 if (car) {
                     const targetX = lanePositions[targetLaneIndex];
                     if (targetLaneIndex !== lastLaneIndex) {
-                        playerLaneShifts += 1; // এআই কপি ট্র্যাকিং
+                        playerLaneShifts += 1; 
                         lastLaneIndex = targetLaneIndex;
                     }
 
