@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Highway - Multiplayer Lobby</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            background-color: #03030c;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        /* Background Graphics */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 0, 85, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 0, 85, 0.02) 1px, transparent 1px);
+            background-size: 30px 30px;
+            background-position: center;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .main-container {
+            position: relative;
+            z-index: 5;
+            width: 90%;
+            max-width: 900px;
+            margin: 40px auto;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* Nav Panel */
+        .nav-panel {
+            background: rgba(10, 10, 25, 0.85);
+            border: 1px solid rgba(255, 0, 85, 0.2);
+            border-radius: 12px;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+        .user-info h2 {
+            font-size: 18px;
+            color: #ff0055;
+            text-shadow: 0 0 5px rgba(255, 0, 85, 0.3);
+            text-transform: uppercase;
+        }
+        .user-info p {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 3px;
+            font-family: monospace;
+        }
+        .back-btn {
+            background: rgba(0, 255, 200, 0.15);
+            border: 1px solid rgba(0, 255, 200, 0.4);
+            color: #00ffcc;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .back-btn:hover {
+            background: rgba(0, 255, 200, 0.3);
+            box-shadow: 0 0 10px rgba(0, 255, 200, 0.4);
+        }
+
+        /* Lobby Grid System */
+        .lobby-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+        @media (max-width: 700px) {
+            .lobby-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Panels Styles */
+        .lobby-panel {
+            background: rgba(10, 10, 25, 0.9);
+            border: 2px solid rgba(0, 255, 200, 0.15);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+        }
+        .lobby-panel h3 {
+            font-size: 18px;
+            color: #00ffcc;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+
+        /* Form styling */
+        .input-group {
+            margin-bottom: 18px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            font-weight: bold;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 12px 15px;
+            color: white;
+            font-size: 14px;
+            outline: none;
+        }
+        .input-group input:focus {
+            border-color: #00ffcc;
+            box-shadow: 0 0 8px rgba(0, 255, 200, 0.3);
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(45deg, #00ffcc, #0088ff);
+            border: none;
+            color: #03030c;
+            padding: 12px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(0, 255, 200, 0.3);
+        }
+        .submit-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 20px rgba(0, 255, 200, 0.5);
+        }
+
+        /* List Items */
+        .req-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .req-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .req-details p {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .req-details span {
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+        }
+        .req-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .action-btn {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: none;
+            font-weight: bold;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .btn-accept { background: #00ffcc; color: #03030c; }
+        .btn-decline { background: #ff0055; color: #fff; }
+
+        /* System Messages Feedback */
+        .msg-box {
+            font-size: 12px;
+            text-align: center;
+            margin-top: 15px;
+            font-weight: bold;
+            min-height: 18px;
+        }
+        .msg-error { color: #ff0055; }
+        .msg-success { color: #00ffcc; }
+
+        /* Symmetrical Full Screen Sync Countdown overlay */
+        .countdown-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #03030c;
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .countdown-text {
+            font-size: 120px;
+            font-weight: 900;
+            color: #00ffcc;
+            text-shadow: 0 0 30px rgba(0, 255, 200, 0.6);
+            font-family: monospace;
+            animation: bounce 0.8s infinite alternate;
+        }
+        @keyframes bounce {
+            0% { transform: scale(0.9); }
+            100% { transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-grid"></div>
+
+    <div class="main-container">
+        <!-- Navigation Panel -->
+        <div class="nav-panel">
+            <div class="user-info">
+                <h2>Multiplayer Duel Port</h2>
+                <p>YOUR LICENSE UID: <span id="my-uid" style="color: #ff0055; font-weight: bold;">USR-000000</span></p>
+            </div>
+            <button class="back-btn" onclick="goBack()">DASHBOARD</button>
+        </div>
+
+        <!-- Lobby Core -->
+        <div class="lobby-grid">
+            <!-- Outgoing request form panel -->
+            <div class="lobby-panel">
+                <h3>Send Duel Challenge</h3>
+                <form id="challenge-form" onsubmit="sendDuelRequest(event)">
+                    <div class="input-group">
+                        <label for="target-uid">OPPONENT DRIVER LICENSE UID</label>
+                        <input type="text" id="target-uid" placeholder="Enter Friend's UID (e.g., USR-123456)" required autocomplete="off">
+                    </div>
+                    <div class="input-group">
+                        <label for="race-dist">RACING TARGET DISTANCE</label>
+                        <select id="race-dist">
+                            <option value="10000">10,000 METERS (10 KM)</option>
+                            <option value="30000">30,000 METERS (30 KM)</option>
+                            <option value="50000">50,000 METERS (50 KM)</option>
+                            <option value="100000">100,000 METERS (100 KM)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="submit-btn">Send Duel Request</button>
+                </form>
+                <div class="msg-box" id="feedback-msg"></div>
+            </div>
+
+            <!-- Incoming challenges panel -->
+            <div class="lobby-panel">
+                <h3>Incoming Challenges</h3>
+                <div class="req-list" id="incoming-list">
+                    <p style="text-align: center; font-size: 13px; opacity: 0.5; margin-top: 40px;">No incoming challenges at the moment.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Symmetrical Sync Countdown Screen -->
+    <div class="countdown-screen" id="countdown-overlay">
+        <h2 style="font-size: 20px; letter-spacing: 2px; color: #ff0055; margin-bottom: 20px; text-transform: uppercase;">Get Ready to Race</h2>
+        <div class="countdown-text" id="countdown-number">3</div>
+        <p style="margin-top: 20px; color: rgba(255,255,255,0.6);" id="opp-join-msg">Loading Opponent...</p>
+    </div>
+
+    <script>
+        let currentUser = null;
+        let signalingInterval = null;
+
+        // --- Auth Validation ---
+        function checkSession() {
+            const session = localStorage.getItem('current_user');
+            if (!session) {
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = JSON.parse(session);
+            document.getElementById('my-uid').innerText = currentUser.uid;
+
+            // সিগন্যালিং পোর্ট অন করা (Polling every 1 second)
+            signalingInterval = setInterval(pollLobbyRequests, 1000);
+        }
+
+        function goBack() {
+            clearInterval(signalingInterval);
+            window.location.href = "home.html";
+        }
+
+        // --- Challenge Request Sender ---
+        function sendDuelRequest(event) {
+            event.preventDefault();
+
+            const targetUid = document.getElementById('target-uid').value.trim().toUpperCase();
+            const distance = parseInt(document.getElementById('race-dist').value);
+            const feedback = document.getElementById('feedback-msg');
+
+            // নিজের আইডি ভ্যালিডেশন
+            if (targetUid === currentUser.uid) {
+                showFeedback("You cannot challenge yourself.", "error");
+                return;
+            }
+
+            // ড্রাইভার আইডির অস্তিত্ব যাচাইকরণ
+            const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
+            const targetUser = userDb.find(u => u.uid === targetUid);
+
+            if (!targetUser) {
+                showFeedback("Driver license UID not found.", "error");
+                return;
+            }
+
+            // লোকাল সিগন্যালিং লবিতে ডাটা পুশ
+            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
+            
+            // পূর্বের পেন্ডিং চ্যালেঞ্জ রিমুভ (ডুপ্লিকেট এড়াতে)
+            lobbyRequests = lobbyRequests.filter(r => r.fromUid !== currentUser.uid);
+
+            const matchId = 'MATCH-' + Date.now();
+            const challenge = {
+                id: matchId,
+                fromUid: currentUser.uid,
+                fromUsername: currentUser.username,
+                toUid: targetUid,
+                toUsername: targetUser.username,
+                distance: distance,
+                status: 'pending'
+            };
+
+            lobbyRequests.push(challenge);
+            localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
+
+            // হোস্ট প্লেয়ার (Player 1) হিসেবে নিজের কনফিগারেশন স্টোরেজে রাখা
+            localStorage.setItem('game_mode', 'multiplayer');
+            localStorage.setItem('race_target_distance', distance);
+            localStorage.setItem('opponent_uid', targetUid);
+            localStorage.setItem('is_host', 'true'); // Host = P1
+            localStorage.setItem('match_id', matchId);
+
+            showFeedback(`Challenge sent to ${targetUser.username}! Waiting...`, "success");
+        }
+
+        // --- Signaling Lobby Polling Engine ---
+        function pollLobbyRequests() {
+            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
+
+            // ১. ইনকামিং রিকোয়েস্ট চেক করা (অন্য কেউ আমাকে চ্যালেঞ্জ করেছে কি না)
+            const incoming = lobbyRequests.filter(r => r.toUid === currentUser.uid && r.status === 'pending');
+            renderIncomingList(incoming);
+
+            // ২. আউটগোয়িং রিকোয়েস্ট চেক করা (আমি যাকে চ্যালেঞ্জ পাঠিয়েছি সে এক্সেপ্ট করেছে কি না)
+            const acceptedRequest = lobbyRequests.find(r => r.fromUid === currentUser.uid && r.status === 'accepted');
+            if (acceptedRequest) {
+                // রিকোয়েস্ট লবি থেকে মুছে ফেলা (যাতে লুপ না হয়)
+                lobbyRequests = lobbyRequests.filter(r => r.id !== acceptedRequest.id);
+                localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
+
+                // ৩ সেকেন্ড কাউন্টডাউন স্টার্ট
+                triggerMatchCountdown(acceptedRequest);
+            }
+        }
+
+        // --- Render Received Challenge Invitations ---
+        function renderIncomingList(requests) {
+            const container = document.getElementById('incoming-list');
+            if (requests.length === 0) {
+                container.innerHTML = `<p style="text-align: center; font-size: 13px; opacity: 0.5; margin-top: 40px;">No incoming challenges.</p>`;
+                return;
+            }
+
+            let html = "";
+            requests.forEach(r => {
+                html += `
+                    <div class="req-item">
+                        <div class="req-details">
+                            <p>${r.fromUsername}</p>
+                            <span>Distance: ${r.distance}m</span>
+                        </div>
+                        <div class="req-actions">
+                            <button class="action-btn btn-accept" onclick="acceptChallenge('${r.id}')">ACCEPT</button>
+                            <button class="action-btn btn-decline" onclick="declineChallenge('${r.id}')">DECLINE</button>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        // --- Challenge Accept Actions ---
+        function acceptChallenge(reqId) {
+            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
+            let req = lobbyRequests.find(r => r.id === reqId);
+
+            if (req) {
+                req.status = 'accepted';
+                localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
+
+                // গেস্ট প্লেয়ার (Player 2) হিসেবে নিজের ম্যাচ কনফিগারেশন রাখা
+                localStorage.setItem('game_mode', 'multiplayer');
+                localStorage.setItem('race_target_distance', req.distance);
+                localStorage.setItem('opponent_uid', req.fromUid);
+                localStorage.setItem('is_host', 'false'); // Guest = P2
+                localStorage.setItem('match_id', req.id);
+
+                triggerMatchCountdown(req);
+            }
+        }
+
+        // --- Challenge Decline Actions ---
+        function declineChallenge(reqId) {
+            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
+            lobbyRequests = lobbyRequests.filter(r => r.id !== reqId);
+            localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
+        }
+
+        // --- Dynamic Symmetrical Match Countdown Timer ---
+        function triggerMatchCountdown(matchData) {
+            clearInterval(signalingInterval); // পোলিং স্টপ করা
+
+            const overlay = document.getElementById('countdown-overlay');
+            const numberEl = document.getElementById('countdown-number');
+            const msgEl = document.getElementById('opp-join-msg');
+
+            overlay.style.display = 'flex';
+            msgEl.innerText = `Matched with: ${matchData.fromUid === currentUser.uid ? matchData.toUsername : matchData.fromUsername}`;
+
+            let count = 3;
+            numberEl.innerText = count;
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    numberEl.innerText = count;
+                } else if (count === 0) {
+                    numberEl.innerText = "GO!";
+                } else {
+                    clearInterval(timer);
+                    // গেম স্ক্রিনে একসাথে রিডিরেকশন
+                    window.location.href = "game.html";
+                }
+            }, 1000);
+        }
+
+        function showFeedback(text, type) {
+            const feedback = document.getElementById('feedback-msg');
+            feedback.innerText = text;
+            if (type === "error") {
+                feedback.className = "msg-box msg-error";
+            } else {
+                feedback.className = "msg-box msg-success";
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', checkSession);
+    </script>
+</body>
+</html>
