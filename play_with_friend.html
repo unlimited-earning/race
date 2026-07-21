@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Neon Highway - Multiplayer Lobby</title>
+    <title>Neon Highway - Multiplayer Lobby (Firebase)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -216,7 +216,7 @@
         .msg-error { color: #ff0055; }
         .msg-success { color: #00ffcc; }
 
-        /* Symmetrical Full Screen Sync Countdown overlay */
+        /* Sync Countdown Screen */
         .countdown-screen {
             display: none;
             position: fixed;
@@ -243,6 +243,11 @@
             100% { transform: scale(1.1); }
         }
     </style>
+
+    <!-- ফায়ারবেস স্ক্রিপ্ট লাইব্রেরিস -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
 
@@ -277,7 +282,7 @@
                             <option value="100000">100,000 METERS (100 KM)</option>
                         </select>
                     </div>
-                    <button type="submit" class="submit-btn">Send Duel Request</button>
+                    <button type="submit" class="submit-btn" id="btn-submit-challenge">Send Duel Request</button>
                 </form>
                 <div class="msg-box" id="feedback-msg"></div>
             </div>
@@ -292,7 +297,7 @@
         </div>
     </div>
 
-    <!-- Symmetrical Sync Countdown Screen -->
+    <!-- Sync Countdown Screen -->
     <div class="countdown-screen" id="countdown-overlay">
         <h2 style="font-size: 20px; letter-spacing: 2px; color: #ff0055; margin-bottom: 20px; text-transform: uppercase;">Get Ready to Race</h2>
         <div class="countdown-text" id="countdown-number">3</div>
@@ -300,102 +305,153 @@
     </div>
 
     <script>
+        // --- ফায়ারবেস কনফিগারেশন এবং ইনিশিয়ালাইজেশন ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBFKWIm1kUaP47rsHtEEP05G66-SSRsvwA",
+            authDomain: "gamil-sever.firebaseapp.com",
+            databaseURL: "https://gamil-sever-default-rtdb.firebaseio.com",
+            projectId: "gamil-sever",
+            storageBucket: "gamil-sever.firebasestorage.app",
+            messagingSenderId: "895391304528",
+            appId: "1:895391304528:web:4b86c59ce3163607beba55"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
         let currentUser = null;
-        let signalingInterval = null;
+        let myOutgoingMatchRef = null; // আউটগোয়িং রিকোয়েস্ট ট্র্যাক রাখার রেফারেন্স
 
-        // --- Auth Validation ---
+        // --- Safe Auth State Observer ---
         function checkSession() {
-            const session = localStorage.getItem('current_user');
-            if (!session) {
-                window.location.href = "index.html";
-                return;
-            }
-            currentUser = JSON.parse(session);
-            document.getElementById('my-uid').innerText = currentUser.uid;
+            auth.onAuthStateChanged((user) => {
+                if (!user) {
+                    window.location.href = "index.html";
+                } else {
+                    const session = localStorage.getItem('current_user');
+                    currentUser = JSON.parse(session);
+                    document.getElementById('my-uid').innerText = currentUser.uid;
 
-            // সিগন্যালিং পোর্ট অন করা (Polling every 1 second)
-            signalingInterval = setInterval(pollLobbyRequests, 1000);
+                    // রিয়েল-টাইম ডাটা লিসেনার পোর্ট অন করা
+                    initRealtimeListeners();
+                }
+            });
         }
 
         function goBack() {
-            clearInterval(signalingInterval);
+            // লিভ করার আগে ডেটাবেস লিসেনার রিমুভ করা
+            if (myOutgoingMatchRef) myOutgoingMatchRef.off();
+            database.ref('lobby_requests').orderByChild('toUid').equalTo(currentUser.uid).off();
             window.location.href = "home.html";
         }
 
-        // --- Challenge Request Sender ---
+        // --- Challenge Request Sender with Firebase Lookups ---
         function sendDuelRequest(event) {
             event.preventDefault();
 
             const targetUid = document.getElementById('target-uid').value.trim().toUpperCase();
             const distance = parseInt(document.getElementById('race-dist').value);
-            const feedback = document.getElementById('feedback-msg');
+            const btnSubmit = document.getElementById('btn-submit-challenge');
 
-            // নিজের আইডি ভ্যালিডেশন
             if (targetUid === currentUser.uid) {
                 showFeedback("You cannot challenge yourself.", "error");
                 return;
             }
 
-            // ড্রাইভার আইডির অস্তিত্ব যাচাইকরণ
-            const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
-            const targetUser = userDb.find(u => u.uid === targetUid);
+            btnSubmit.disabled = true;
+            btnSubmit.innerText = "Searching Driver...";
 
-            if (!targetUser) {
-                showFeedback("Driver license UID not found.", "error");
-                return;
-            }
+            // ফায়ারবেস ইউআইডি ডিরেক্টরি টেবিলে রিকোয়েস্টেড ড্রাইভার খোঁজা
+            database.ref('uid_lookup/' + targetUid).once('value')
+                .then((snapshot) => {
+                    const targetFirebaseUid = snapshot.val();
+                    if (!targetFirebaseUid) {
+                        showFeedback("Driver license UID not found.", "error");
+                        btnSubmit.disabled = false;
+                        btnSubmit.innerText = "Send Duel Request";
+                        return;
+                    }
 
-            // লোকাল সিগন্যালিং লবিতে ডাটা পুশ
-            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
-            
-            // পূর্বের পেন্ডিং চ্যালেঞ্জ রিমুভ (ডুপ্লিকেট এড়াতে)
-            lobbyRequests = lobbyRequests.filter(r => r.fromUid !== currentUser.uid);
+                    // অপোনেন্টের ইউজারনেম রিড করা
+                    database.ref('users/' + targetFirebaseUid).once('value')
+                        .then((userSnapshot) => {
+                            const targetUser = userSnapshot.val();
+                            const matchId = 'MATCH-' + Date.now();
 
-            const matchId = 'MATCH-' + Date.now();
-            const challenge = {
-                id: matchId,
-                fromUid: currentUser.uid,
-                fromUsername: currentUser.username,
-                toUid: targetUid,
-                toUsername: targetUser.username,
-                distance: distance,
-                status: 'pending'
-            };
+                            const challengeData = {
+                                id: matchId,
+                                fromUid: currentUser.uid,
+                                fromUsername: currentUser.username,
+                                toUid: targetUid,
+                                toUsername: targetUser.username,
+                                distance: distance,
+                                status: 'pending'
+                            };
 
-            lobbyRequests.push(challenge);
-            localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
+                            // ফায়ারবেস রিয়েল-টাইম ডাটাবেসে রিকোয়েস্ট পুশ
+                            database.ref('lobby_requests/' + matchId).set(challengeData)
+                                .then(() => {
+                                    showFeedback(`Challenge sent to ${targetUser.username}! Waiting...`, "success");
+                                    btnSubmit.disabled = false;
+                                    btnSubmit.innerText = "Send Duel Request";
 
-            // হোস্ট প্লেয়ার (Player 1) হিসেবে নিজের কনফিগারেশন স্টোরেজে রাখা
-            localStorage.setItem('game_mode', 'multiplayer');
-            localStorage.setItem('race_target_distance', distance);
-            localStorage.setItem('opponent_uid', targetUid);
-            localStorage.setItem('is_host', 'true'); // Host = P1
-            localStorage.setItem('match_id', matchId);
+                                    // হোস্ট প্লেয়ার (Player 1) হিসেবে ম্যাচ কনফিগারেশন ক্যাশ সেভ করা
+                                    localStorage.setItem('race_mode', 'multiplayer');
+                                    localStorage.setItem('race_target_distance', distance);
+                                    localStorage.setItem('opponent_uid', targetUid);
+                                    localStorage.setItem('is_host', 'true'); 
+                                    localStorage.setItem('match_id', matchId);
 
-            showFeedback(`Challenge sent to ${targetUser.username}! Waiting...`, "success");
+                                    // আউটগোয়িং রিকোয়েস্টে এআই বটের এক্সেপ্টেন্স অবজার্ভ করা
+                                    trackOutgoingChallenge(matchId);
+                                });
+                        });
+                })
+                .catch((error) => {
+                    showFeedback(error.message, "error");
+                    btnSubmit.disabled = false;
+                    btnSubmit.innerText = "Send Duel Request";
+                });
         }
 
-        // --- Signaling Lobby Polling Engine ---
-        function pollLobbyRequests() {
-            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
-
-            // ১. ইনকামিং রিকোয়েস্ট চেক করা (অন্য কেউ আমাকে চ্যালেঞ্জ করেছে কি না)
-            const incoming = lobbyRequests.filter(r => r.toUid === currentUser.uid && r.status === 'pending');
-            renderIncomingList(incoming);
-
-            // ২. আউটগোয়িং রিকোয়েস্ট চেক করা (আমি যাকে চ্যালেঞ্জ পাঠিয়েছি সে এক্সেপ্ট করেছে কি না)
-            const acceptedRequest = lobbyRequests.find(r => r.fromUid === currentUser.uid && r.status === 'accepted');
-            if (acceptedRequest) {
-                // রিকোয়েস্ট লবি থেকে মুছে ফেলা (যাতে লুপ না হয়)
-                lobbyRequests = lobbyRequests.filter(r => r.id !== acceptedRequest.id);
-                localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
-
-                // ৩ সেকেন্ড কাউন্টডাউন স্টার্ট
-                triggerMatchCountdown(acceptedRequest);
-            }
+        // --- Real-time Listeners (ফায়ারবেস রিয়েল-টাইম পুশ নোটিফিকেশন লুপ) ---
+        function initRealtimeListeners() {
+            // আমাকে পাঠানো ইনকামিং চ্যালেঞ্জগুলো লাইভ ট্র্যাক করা
+            database.ref('lobby_requests').orderByChild('toUid').equalTo(currentUser.uid)
+                .on('value', (snapshot) => {
+                    const requestsObj = snapshot.val();
+                    const incomingRequests = [];
+                    
+                    if (requestsObj) {
+                        Object.keys(requestsObj).forEach(key => {
+                            if (requestsObj[key].status === 'pending') {
+                                incomingRequests.push(requestsObj[key]);
+                            }
+                        });
+                    }
+                    renderIncomingList(incomingRequests);
+                });
         }
 
-        // --- Render Received Challenge Invitations ---
+        // --- Track My Outgoing Challenge Acceptance ---
+        function trackOutgoingChallenge(matchId) {
+            if (myOutgoingMatchRef) myOutgoingMatchRef.off();
+
+            myOutgoingMatchRef = database.ref('lobby_requests/' + matchId);
+            myOutgoingMatchRef.on('value', (snapshot) => {
+                const req = snapshot.val();
+                if (req && req.status === 'accepted') {
+                    // ডেটাবেস লবি থেকে রেকর্ড মুছে ফেলা (যাতে ডাটাবেস ক্লিন থাকে)
+                    myOutgoingMatchRef.remove();
+                    myOutgoingMatchRef.off();
+
+                    triggerMatchCountdown(req);
+                }
+            });
+        }
+
+        // --- Render Incoming Challenges UI ---
         function renderIncomingList(requests) {
             const container = document.getElementById('incoming-list');
             if (requests.length === 0) {
@@ -421,36 +477,37 @@
             container.innerHTML = html;
         }
 
-        // --- Challenge Accept Actions ---
+        // --- Challenge Accept Action ---
         function acceptChallenge(reqId) {
-            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
-            let req = lobbyRequests.find(r => r.id === reqId);
+            database.ref('lobby_requests/' + reqId).once('value')
+                .then((snapshot) => {
+                    const req = snapshot.val();
+                    if (req) {
+                        // স্ট্যাটাস এক্সেপ্ট করা এবং ডাটাবেস আপডেট করা
+                        database.ref('lobby_requests/' + reqId + '/status').set('accepted')
+                            .then(() => {
+                                // গেস্ট প্লেয়ার (Player 2) হিসেবে ম্যাচ কনফিগারেশন লোকাল সেভ করা
+                                localStorage.setItem('race_mode', 'multiplayer');
+                                localStorage.setItem('race_target_distance', req.distance);
+                                localStorage.setItem('opponent_uid', req.fromUid);
+                                localStorage.setItem('is_host', 'false'); 
+                                localStorage.setItem('match_id', req.id);
 
-            if (req) {
-                req.status = 'accepted';
-                localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
-
-                // গেস্ট প্লেয়ার (Player 2) হিসেবে নিজের ম্যাচ কনফিগারেশন রাখা
-                localStorage.setItem('game_mode', 'multiplayer');
-                localStorage.setItem('race_target_distance', req.distance);
-                localStorage.setItem('opponent_uid', req.fromUid);
-                localStorage.setItem('is_host', 'false'); // Guest = P2
-                localStorage.setItem('match_id', req.id);
-
-                triggerMatchCountdown(req);
-            }
+                                triggerMatchCountdown(req);
+                            });
+                    }
+                });
         }
 
-        // --- Challenge Decline Actions ---
+        // --- Challenge Decline Action ---
         function declineChallenge(reqId) {
-            let lobbyRequests = JSON.parse(localStorage.getItem('lobby_requests')) || [];
-            lobbyRequests = lobbyRequests.filter(r => r.id !== reqId);
-            localStorage.setItem('lobby_requests', JSON.stringify(lobbyRequests));
+            database.ref('lobby_requests/' + reqId).remove();
         }
 
-        // --- Dynamic Symmetrical Match Countdown Timer ---
+        // --- Synced Countdown Timer ---
         function triggerMatchCountdown(matchData) {
-            clearInterval(signalingInterval); // পোলিং স্টপ করা
+            // লবি লিসেনার অফ করা
+            database.ref('lobby_requests').orderByChild('toUid').equalTo(currentUser.uid).off();
 
             const overlay = document.getElementById('countdown-overlay');
             const numberEl = document.getElementById('countdown-number');
@@ -470,7 +527,6 @@
                     numberEl.innerText = "GO!";
                 } else {
                     clearInterval(timer);
-                    // গেম স্ক্রিনে একসাথে রিডিরেকশন
                     window.location.href = "game.html";
                 }
             }, 1000);
