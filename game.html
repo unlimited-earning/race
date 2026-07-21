@@ -97,7 +97,7 @@
             box-shadow: 0 0 8px #ffea00;
         }
 
-        /* 3D Vertical Minimap */
+        /* 3D Vertical Minimap on Right side */
         #minimap-container {
             position: absolute;
             right: 25px;
@@ -242,10 +242,6 @@
             animation: spin 1s linear infinite;
             margin-bottom: 25px;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
 
         /* Countdown Overlay INSIDE game */
         #start-countdown-overlay {
@@ -310,8 +306,6 @@
     </style>
     <!-- Stable Global Script CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/DRACOLoader.js"></script>
 
     <!-- ফায়ারবেস স্ক্রিপ্ট লাইব্রেরিস -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -320,7 +314,7 @@
 </head>
 <body>
 
-    <!-- Synced Loading Screen Barrier -->
+    <!-- Symmetrical Synced Loading Screen Barrier -->
     <div id="sync-overlay">
         <div class="spinner"></div>
         <h2 id="sync-status-msg" style="color: #00ffcc; text-shadow: 0 0 10px #00ffcc; text-transform: uppercase; font-size: 20px; letter-spacing: 1px;">Synchronizing Race Engines...</h2>
@@ -341,7 +335,6 @@
             <div id="power-bar-container">
                 <div id="power-bar"></div>
             </div>
-            <div id="mode-toggle" style="display: none;">DRIVE: AUTO-SPEED</div>
         </div>
 
         <!-- Progress Panel -->
@@ -401,27 +394,11 @@
     <div id="canvas-container"></div>
 
     <script>
-        // --- ফায়ারবেস কনফিগারেশন এবং ইনিশিয়ালাইজেশন ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyBFKWIm1kUaP47rsHtEEP05G66-SSRsvwA",
-            authDomain: "gamil-sever.firebaseapp.com",
-            databaseURL: "https://gamil-sever-default-rtdb.firebaseio.com",
-            projectId: "gamil-sever",
-            storageBucket: "gamil-sever.firebasestorage.app",
-            messagingSenderId: "895391304528",
-            appId: "1:895391304528:web:4b86c59ce3163607beba55"
-        };
-        
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const database = firebase.database();
-
         // --- Core Engine variables ---
         let scene, camera, renderer;
         let car = null;
         let aiCar = null; 
         
-        let originalModelLoaded = false;
         let road, roadLines = [];
         let buildings = [];
         let obstacles = [];
@@ -435,12 +412,14 @@
         // মোবাইল ডিভাইস ডিটেকশন ও পারফরম্যান্স সেটআপ
         const isMobile = window.innerWidth < 600 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         
-        // ডেল্টা টাইম ভিত্তিক ফিজিক্স ইঞ্জিন ক্লক (Decoupled Physics Engine)
+        // ডেল্টা টাইম ভিত্তিক ফিজিক্স ইঞ্জিন ক্লক
         const clock = new THREE.Clock();
         
         let gameActive = false;
         let playerDistance = 0;
         let aiDistance = 0;
+        
+        // targetDistance ডাইনামিক রিক্যালকুলেশনের জন্য সংশোধন করা হলো
         let targetDistance = 10000; 
 
         let baseSpeed = 1.2; 
@@ -485,6 +464,118 @@
         let playerBoostsUsed = 0;
         let lastLaneIndex = 2;
 
+        // --- Safe 3D Procedural Sports Car Generator (Ferrari Cyberpunk) ---
+        function createDetailedSportsCar(primaryColor, glowColor) {
+            const carGroup = new THREE.Group();
+
+            // 1. Sleek Lower Chassis
+            const bodyGeo = new THREE.BoxGeometry(1.4, 0.25, 3.2);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: primaryColor, 
+                metalness: 0.8, 
+                roughness: 0.1 
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.25;
+            carGroup.add(body);
+
+            // 2. Aerodynamic Nose Cone
+            const noseGeo = new THREE.BoxGeometry(1.3, 0.15, 0.8);
+            const nose = new THREE.Mesh(noseGeo, bodyMat);
+            nose.position.set(0, 0.18, 1.8);
+            carGroup.add(nose);
+
+            // 3. Curved Glass Cabin (Cockpit)
+            const cabinGeo = new THREE.BoxGeometry(1.05, 0.38, 1.5);
+            const cabinMat = new THREE.MeshStandardMaterial({ 
+                color: 0x050510, 
+                roughness: 0.05, 
+                metalness: 0.95 
+            });
+            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+            cabin.position.set(0, 0.55, -0.1);
+            carGroup.add(cabin);
+
+            // 4. Sleek Racing Spoiler Wing
+            const spoilerWingGeo = new THREE.BoxGeometry(1.5, 0.04, 0.35);
+            const spoilerMat = new THREE.MeshStandardMaterial({ 
+                color: glowColor, 
+                emissive: glowColor, 
+                emissiveIntensity: 0.8 
+            });
+            const wing = new THREE.Mesh(spoilerWingGeo, spoilerMat);
+            wing.position.set(0, 0.75, -1.5);
+            carGroup.add(wing);
+
+            // Spoiler Mounts
+            const mountGeo = new THREE.BoxGeometry(0.08, 0.3, 0.08);
+            const mountMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const lMount = new THREE.Mesh(mountGeo, mountMat);
+            lMount.position.set(-0.55, 0.5, -1.45);
+            const rMount = lMount.clone();
+            rMount.position.x = 0.55;
+            carGroup.add(lMount, rMount);
+
+            // 5. Headlights
+            const lightGeo = new THREE.BoxGeometry(0.22, 0.06, 0.1);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+            const lHead = new THREE.Mesh(lightGeo, lightMat);
+            lHead.position.set(-0.45, 0.22, 2.15);
+            const rHead = lHead.clone();
+            rHead.position.x = 0.45;
+            carGroup.add(lHead, rHead);
+
+            // 6. Taillights
+            const tailGeo = new THREE.BoxGeometry(1.2, 0.05, 0.1);
+            const tailMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const tailLight = new THREE.Mesh(tailGeo, tailMat);
+            tailLight.position.set(0, 0.25, -1.61);
+            carGroup.add(tailLight);
+
+            // 7. Cylindrical Wheels
+            const wheelGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.28, 16);
+            wheelGeo.rotateZ(Math.PI / 2); 
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0d0d12, roughness: 0.8 });
+
+            const wheelOffsets = [
+                [-0.75, 0.33, 0.9],  
+                [0.75, 0.33, 0.9],   
+                [-0.75, 0.33, -0.9],  
+                [0.75, 0.33, -0.9]   
+            ];
+
+            const localWheels = [];
+            wheelOffsets.forEach(pos => {
+                const w = new THREE.Mesh(wheelGeo, wheelMat);
+                w.position.set(pos[0], pos[1], pos[2]);
+                carGroup.add(w);
+                localWheels.push(w);
+            });
+
+            // Underglow Neon
+            const underglow = new THREE.PointLight(glowColor, 4, 6);
+            underglow.position.set(0, 0.1, 0);
+            underglow.name = "underglow";
+            carGroup.add(underglow);
+
+            // Exhaust Fire Cones
+            const flameGeo = new THREE.ConeGeometry(0.12, 1.0, 8);
+            flameGeo.rotateX(-Math.PI / 2);
+            const flameMat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true, opacity: 0.8 });
+            
+            const flameL = new THREE.Mesh(flameGeo, flameMat);
+            flameL.position.set(-0.4, 0.2, -1.65);
+            const flameR = flameL.clone();
+            flameR.position.x = 0.4;
+            carGroup.add(flameL, flameR);
+
+            return {
+                group: carGroup,
+                wheels: localWheels,
+                flames: [flameL, flameR]
+            };
+        }
+
         // --- Init Environment & Safe Render ---
         function init() {
             try {
@@ -496,26 +587,21 @@
                 scene.background = new THREE.Color(0x020208);
                 scene.fog = new THREE.FogExp2(0x020208, 0.0075);
 
-                // --- ডায়নামিক মোবাইল ক্যামেরা কাস্টমাইজেশন (Responsive Mobile Camera) ---
-                const fov = isMobile ? 65 : 60; // মোবাইল ইউজারদের জন্য ওয়াইড FOV
+                const fov = isMobile ? 65 : 60; 
                 camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, 0.1, 1000);
                 
                 if (isMobile) {
-                    // মোবাইলে ক্যামেরা গাড়ি থেকে আরও পেছনে এবং ওপরে রাখা হলো
                     camera.position.set(0, 4.2, 10.5); 
                 } else {
                     camera.position.set(0, 3.2, 8.5); 
                 }
                 camera.lookAt(0, 1.0, -15); 
 
-                renderer = new THREE.WebGLRenderer({ antialias: !isMobile }); // মোবাইলের জন্য অ্যান্টিএলিয়াস অফ (পারফরম্যান্স বুস্ট)
+                renderer = new THREE.WebGLRenderer({ antialias: !isMobile }); 
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                
-                // মোবাইলের ডিপিআই রেশিও ১.৫ এ লক করা হলো (WebGL rendering lag fix)
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2.0));
                 
-                // মোবাইল জিপিইউ এর চাপ কমাতে রিয়েল-টাইম সফট শ্যাডো ম্যাপ বন্ধ করা হলো
-                renderer.shadowMap.enabled = !isMobile;
+                renderer.shadowMap.enabled = false;
                 container.appendChild(renderer.domElement);
 
                 const ambientLight = new THREE.AmbientLight(0x111125, 2.2);
@@ -523,7 +609,6 @@
 
                 const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
                 dirLight.position.set(10, 20, 10);
-                if (!isMobile) dirLight.castShadow = true;
                 scene.add(dirLight);
 
                 createEnvironment();
@@ -592,7 +677,6 @@
             road = new THREE.Mesh(roadGeo, roadMat);
             road.rotation.x = -Math.PI / 2;
             road.position.set(0, 0, -roadLength/2 + 10);
-            if (!isMobile) road.receiveShadow = true;
             scene.add(road);
 
             // Sidewalk curbs
@@ -620,8 +704,8 @@
                 });
             }
 
-            // Cyberpunk Buildings (মোবাইলের ক্ষেত্রে বিল্ডিং সংখ্যা কম ২0টি জেনারেট করা হবে)
-            const buildingCount = isMobile ? 20 : 35;
+            // Cyberpunk Buildings
+            const buildingCount = isMobile ? 18 : 35;
             const colors = [0xff0055, 0x00ffcc, 0x9900ff, 0x0066ff];
             for (let i = 0; i < buildingCount; i++) {
                 const bWidth = 5 + Math.random() * 5;
@@ -653,7 +737,7 @@
 
             // Starfield
             const starsGeo = new THREE.BufferGeometry();
-            const starsCount = isMobile ? 300 : 600; // মোবাইল ফ্রেন্ডলি স্টার কাউন্ট
+            const starsCount = isMobile ? 250 : 600; 
             const starPositions = new Float32Array(starsCount * 3);
             for(let i=0; i<starsCount*3; i+=3) {
                 starPositions[i] = (Math.random() - 0.5) * 200;
@@ -666,124 +750,27 @@
             scene.add(stars);
         }
 
-        // --- Create Instant Cyber Car ---
+        // --- Spawns Procedural Cars ---
         function createInstantCyberCar() {
-            car = new THREE.Group();
-            wheels = []; 
-            exhaustFlames = [];
-            
-            const bodyGeo = new THREE.BoxGeometry(1.4, 0.42, 2.9);
-            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0055, metalness: 0.9, roughness: 0.1 });
-            const body = new THREE.Mesh(bodyGeo, bodyMat);
-            body.position.y = 0.35;
-            if (!isMobile) body.castShadow = true;
-            car.add(body);
-
-            const cabinGeo = new THREE.BoxGeometry(1.05, 0.38, 1.4);
-            const cabinMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.05, metalness: 0.95 });
-            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
-            cabin.position.set(0, 0.7, -0.15);
-            if (!isMobile) cabin.castShadow = true;
-            car.add(cabin);
-
-            const spoilerGeo = new THREE.BoxGeometry(1.5, 0.05, 0.3);
-            const spoilerMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 1.0 });
-            const spoiler = new THREE.Mesh(spoilerGeo, spoilerMat);
-            spoiler.position.set(0, 0.8, -1.2);
-            car.add(spoiler);
-
-            const wheelGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.28, 16);
-            wheelGeo.rotateZ(Math.PI / 2); 
-            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.8 });
-
-            const wheelOffsets = [
-                [-0.75, 0.33, 0.9],  
-                [0.75, 0.33, 0.9],   
-                [-0.75, 0.33, -0.9],  
-                [0.75, 0.33, -0.9]   
-            ];
-
-            wheelOffsets.forEach(pos => {
-                const w = new THREE.Mesh(wheelGeo, wheelMat);
-                w.position.set(pos[0], pos[1], pos[2]);
-                car.add(w);
-                wheels.push(w); 
-            });
-
-            const underglow = new THREE.PointLight(0xff0055, 4, 6);
-            underglow.position.set(0, 0.1, 0);
-            underglow.name = "underglow";
-            car.add(underglow);
-
-            // Exhaust Flames
-            const flameGeo = new THREE.ConeGeometry(0.12, 1.0, 8);
-            flameGeo.rotateX(-Math.PI / 2);
-            const flameMat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true, opacity: 0.8 });
-            
-            const flameL = new THREE.Mesh(flameGeo, flameMat);
-            flameL.position.set(-0.4, 0.25, -1.5);
-            const flameR = flameL.clone();
-            flameR.position.x = 0.4;
-            
-            car.add(flameL, flameR);
-            exhaustFlames.push(flameL, flameR);
+            const carSetup = createDetailedSportsCar(0xff0055, 0x00ffcc);
+            car = carSetup.group;
+            wheels = carSetup.wheels;
+            exhaustFlames = carSetup.flames;
 
             car.position.set(lanePositions[targetLaneIndex], 0.05, 1);
             scene.add(car);
-
             spawnObstacles();
         }
 
-        // --- Create AI Bot Car ---
         function createAiCar() {
-            aiCar = new THREE.Group();
-            aiWheels = [];
-
             const colorHex = (raceMode === 'multiplayer') ? 0x0088ff : 0xffaa00;
             const emissiveHex = (raceMode === 'multiplayer') ? 0x0088ff : 0xffea00;
 
-            const bodyGeo = new THREE.BoxGeometry(1.4, 0.42, 2.9);
-            const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.95, roughness: 0.05 });
-            const body = new THREE.Mesh(bodyGeo, bodyMat);
-            body.position.y = 0.35;
-            if (!isMobile) body.castShadow = true;
-            aiCar.add(body);
+            const aiSetup = createDetailedSportsCar(colorHex, emissiveHex);
+            aiCar = aiSetup.group;
+            aiWheels = aiSetup.wheels;
 
-            const cabinGeo = new THREE.BoxGeometry(1.05, 0.38, 1.4);
-            const cabinMat = new THREE.MeshStandardMaterial({ color: 0x151520, roughness: 0.1 });
-            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
-            cabin.position.set(0, 0.7, -0.15);
-            aiCar.add(cabin);
-
-            const spoilerGeo = new THREE.BoxGeometry(1.5, 0.05, 0.3);
-            const spoilerMat = new THREE.MeshStandardMaterial({ color: emissiveHex, emissive: emissiveHex, emissiveIntensity: 0.8 });
-            const spoiler = new THREE.Mesh(spoilerGeo, spoilerMat);
-            spoiler.position.set(0, 0.8, -1.2);
-            aiCar.add(spoiler);
-
-            const wheelGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.28, 16);
-            wheelGeo.rotateZ(Math.PI / 2); 
-            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
-
-            const wheelOffsets = [
-                [-0.75, 0.33, 0.9],  
-                [0.75, 0.33, 0.9],   
-                [-0.75, 0.33, -0.9],  
-                [0.75, 0.33, -0.9]   
-            ];
-
-            wheelOffsets.forEach(pos => {
-                const w = new THREE.Mesh(wheelGeo, wheelMat);
-                w.position.set(pos[0], pos[1], pos[2]);
-                aiCar.add(w);
-                aiWheels.push(w); 
-            });
-
-            const underglow = new THREE.PointLight(emissiveHex, 3, 5);
-            underglow.position.set(0, 0.1, 0);
-            aiCar.add(underglow);
-
-            aiCar.position.set(lanePositions[aiTargetLaneIndex], 0.05, -15); 
+            aiCar.position.set(lanePositions[aiTargetLaneIndex], 0.05, -15);
             scene.add(aiCar);
         }
 
@@ -814,11 +801,6 @@
 
                         newCar.traverse(function (child) {
                             if (child.isMesh) {
-                                if (!isMobile) {
-                                    child.castShadow = true;
-                                    child.receiveShadow = true;
-                                }
-
                                 const nameLower = child.name.toLowerCase();
                                 if (nameLower.includes('wheel') || nameLower.includes('tire')) {
                                     wheels.push(child);
@@ -873,14 +855,12 @@
             const bodyMat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.6, roughness: 0.3 });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.y = 0.35;
-            if (!isMobile) body.castShadow = true;
             trafficCarGroup.add(body);
             
             const cabinGeo = new THREE.BoxGeometry(1.15, 0.38, 1.4);
             const cabinMat = new THREE.MeshStandardMaterial({ color: 0x15151a, roughness: 0.1 });
             const cabin = new THREE.Mesh(cabinGeo, cabinMat);
             cabin.position.set(0, 0.72, -0.2); 
-            if (!isMobile) cabin.castShadow = true;
             trafficCarGroup.add(cabin);
             
             const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.25, 12);
@@ -1013,7 +993,7 @@
             }
         }
 
-        // --- Speed Logic (ডেল্টা টাইম এস্কেলিংসহ) ---
+        // --- Speed Logic ---
         function handleSpeedLogic(ts) {
             let targetSpeed = 0;
 
@@ -1173,13 +1153,13 @@
             // ১. নিজের ডিভাইস রেডি স্টেট ডাটাবেসে ট্রু (True) করা
             database.ref(`matches/${matchId}/${myNode}_ready`).set(true);
 
-            // ২. ফায়ারবেস লিসেনার দিয়ে উভয় ডিভাইস রেডি কি না অবজার্ভ করা (Symmetrical Barrier)
+            // ২. ফায়ারবেস লিসেনার দিয়ে উভয় ডিভাইস রেডি কি না অবজার্ভ করা
             matchRootRef.on('value', (snapshot) => {
                 const matchData = snapshot.val();
                 if (matchData && matchData.p1_ready === true && matchData.p2_ready === true) {
                     matchRootRef.off('value');
                     document.getElementById('sync-overlay').style.display = 'none';
-                    startLocalCountdown(); // দুই ডিভাইসেই একই সাথে কাউন্টডাউন শুরু
+                    startLocalCountdown(); 
                 }
             });
 
@@ -1195,7 +1175,6 @@
                     if (aiCar) {
                         const targetX = lanePositions[oppLane];
                         
-                        // ল্যাগ এড়াতে সিঙ্ক কোলাইড লার্নিং ইন্টারপোলেশন রেট বাড়ানো হলো
                         aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.25);
                         aiCar.position.y = THREE.MathUtils.lerp(aiCar.position.y, oppY, 0.25);
 
@@ -1326,7 +1305,7 @@
             }
         }
 
-        // --- রেজাল্ট প্রদর্শন উইন্ডো ---
+        // ---  রেজাল্ট প্রদর্শন উইন্ডো ---
         function showRaceResult(isWinner) {
             gameActive = false;
             document.getElementById('final-score').innerText = Math.round(playerDistance);
@@ -1369,11 +1348,6 @@
             window.location.href = "home.html";
         }
 
-        // --- Reset Game ---
-        function resetGame() {
-            window.location.reload();
-        }
-
         // --- Window Resize ---
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -1381,14 +1355,14 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- Animation Loop (Delta-Time Decoupled) ---
+        // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
 
             // ডেল্টা টাইম গণনা ( decoupling FPS from speed )
             const delta = clock.getDelta();
-            const timeScale = delta / 0.0166; // ৬০ এফপিএস বেস স্কেলিং
-            const ts = Math.min(3.0, timeScale); // চরম ল্যাগিং প্রোটেকশন ক্যাপ
+            const timeScale = delta / 0.0166; 
+            const ts = Math.min(3.0, timeScale); 
 
             if (gameActive) {
                 const calculatedSpeed = Math.round(currentSpeed * 310);
@@ -1441,7 +1415,6 @@
                         lastLaneIndex = targetLaneIndex;
                     }
 
-                    // মোবাইলের জন্য লেন শিফটিং আরো মসৃণ এবং দ্রুত করা হলো (0.15 * ts)
                     car.position.x = THREE.MathUtils.lerp(car.position.x, targetX, 0.15 * ts);
                     
                     if (crashPenaltyTimer > 0) {
@@ -1450,7 +1423,6 @@
                         car.rotation.y = THREE.MathUtils.lerp(car.rotation.y, (targetX - car.position.x) * 0.05, 0.15 * ts);
                     }
 
-                    // ক্যামেরা ফাস্ট ফলো (0.25 * ts)
                     camera.position.x = THREE.MathUtils.lerp(camera.position.x, car.position.x, 0.25 * ts);
                     camera.lookAt(camera.position.x, 1.0, -15);
                 }
@@ -1512,7 +1484,7 @@
                     if (line.position.z > 10) line.position.z = -120;
                 });
 
-                // Scroll buildings (মোবাইল ও পিসিতে ফ্রেম ড্রপ ছাড়া স্ক্রলিং)
+                // Scroll buildings
                 buildings.forEach(b => {
                     b.position.z += currentSpeed * ts;
                     if (b.position.z > 20) b.position.z = -roadLength + Math.random() * 20;
