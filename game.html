@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Neon Highway - Championship Port (Firebase)</title>
+    <title>3D Neon Highway - Championship Port (Synced)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -97,7 +97,7 @@
             box-shadow: 0 0 8px #ffea00;
         }
 
-        /* 3D Vertical Minimap on Right side */
+        /* 3D Vertical Minimap */
         #minimap-container {
             position: absolute;
             right: 25px;
@@ -219,7 +219,56 @@
             border-radius: 20px;
         }
 
-        /* Screen overlays */
+        /* Synced Match Loading Barrier Overlay */
+        #sync-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #03030c;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.1);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border-left-color: #00ffcc;
+            animation: spin 1s linear infinite;
+            margin-bottom: 25px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Countdown Overlay INSIDE game */
+        #start-countdown-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(3, 3, 12, 0.85);
+            z-index: 900;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        #countdown-number {
+            font-size: 130px;
+            font-weight: 900;
+            color: #00ffcc;
+            text-shadow: 0 0 35px rgba(0, 255, 200, 0.6);
+            font-family: monospace;
+        }
+
         #game-over {
             display: none;
             position: absolute;
@@ -271,6 +320,19 @@
 </head>
 <body>
 
+    <!-- Symmetrical Synced Loading Screen Barrier -->
+    <div id="sync-overlay">
+        <div class="spinner"></div>
+        <h2 id="sync-status-msg" style="color: #00ffcc; text-shadow: 0 0 10px #00ffcc; text-transform: uppercase; font-size: 20px; letter-spacing: 1px;">Synchronizing Race Engines...</h2>
+        <p style="color: rgba(255,255,255,0.5); margin-top: 10px; font-size: 13px;">Waiting for both devices to load</p>
+    </div>
+
+    <!-- Starting Race Countdown Inside Game -->
+    <div id="start-countdown-overlay">
+        <h2 style="font-size: 18px; color: #ff0055; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px;">Championship Match</h2>
+        <div id="countdown-number">3</div>
+    </div>
+
     <!-- HUD Dashboard -->
     <div id="ui">
         <div class="hud-panel">
@@ -314,7 +376,7 @@
         <span style="font-size: 11px; z-index: 6; opacity: 0.8;">🚦</span>
     </div>
 
-    <div id="instructions">A/D (Steer) | BRK (Brake) | GAS (Manual Drive) | JUMP (Jump) | POWR (Nitro)</div>
+    <div id="instructions"> start </div>
 
     <!-- On-Screen Controls -->
     <div class="controls-overlay">
@@ -410,6 +472,7 @@
         // ফায়ারবেস রিয়েল-টাইম সিঙ্কিং রেফারেন্স
         let mySyncRef = null;
         let oppSyncRef = null;
+        let matchRootRef = null; // সিঙ্ক ক্লিনিং এর জন্য
 
         // AI learning variables
         let playerLaneShifts = 0;
@@ -452,10 +515,12 @@
                 createAiCar(); 
                 
                 setupInputEvents();
-                initOnlineMatchSync(); // ফায়ারবেস সিঙ্ক ইনিশিয়ালাইজেশন
                 
-                gameActive = true;
+                // রেন্ডার লুপ ইনস্ট্যান্টলি স্টার্ট করা হলো
                 animate(); 
+
+                // অনলাইন মোডের সিনক্রোনাইজেশন চালু করা
+                initOnlineMatchSync(); 
 
                 loadModelInBackground();
 
@@ -1104,17 +1169,44 @@
             aiCar.position.z = -15 + zDifference; 
         }
 
-        // --- Multiplayer Syncing Engine (ফায়ারবেস অনলাইন রিয়েল-টাইম মাল্টিপ্লেয়ার সিঙ্ক) ---
+        // --- ফায়ারবেস রিয়েল-টাইম মাল্টিপ্লেয়ার সিঙ্ক ও রেডি বেরিয়ার ইঞ্জিন ---
         function initOnlineMatchSync() {
-            if (raceMode !== 'multiplayer') return;
+            if (raceMode !== 'multiplayer') {
+                // সিঙ্গেল প্লেয়ার হলে সরাসরি কাউন্টডাউন শুরু
+                startLocalCountdown();
+                return;
+            }
 
+            // মাল্টিপ্লেয়ার সিনক্রোনাইজেশন ওভারলে প্রদর্শন
+            document.getElementById('sync-overlay').style.display = 'flex';
+            gameActive = false;
+
+            matchRootRef = database.ref(`matches/${matchId}`);
             const myNode = isHost ? 'p1' : 'p2';
             const oppNode = isHost ? 'p2' : 'p1';
 
             mySyncRef = database.ref(`matches/${matchId}/${myNode}`);
             oppSyncRef = database.ref(`matches/${matchId}/${oppNode}`);
 
-            // অপোনেন্টের রিয়েল-টাইম ডাটা লিসেনার
+            // ১. নিজের ডিভাইস রেডি স্টেট ডাটাবেসে ট্রু (True) করা
+            database.ref(`matches/${matchId}/${myNode}_ready`).set(true);
+
+            // ২. ফায়ারবেস লিসেনার দিয়ে উভয় ডিভাইস রেডি কি না অবজার্ভ করা (Perfect Synced Connection)
+            matchRootRef.on('value', (snapshot) => {
+                const matchData = snapshot.val();
+                if (matchData && matchData.p1_ready === true && matchData.p2_ready === true) {
+                    // লিসেনার অফ করা (যাতে লুপ না হয়)
+                    matchRootRef.off('value');
+                    
+                    // কানেক্টিং ওভারলে হাইড করা
+                    document.getElementById('sync-overlay').style.display = 'none';
+
+                    // উভয়ের স্ক্রিনে একসাথে ৩ সেকেন্ডের কাউন্টডাউন শুরু করা
+                    startLocalCountdown();
+                }
+            });
+
+            // ৩. অপোনেন্টের রিয়েল-টাইম রেসিং ডাটা লিসেনার
             oppSyncRef.on('value', (snapshot) => {
                 const oppData = snapshot.val();
                 if (oppData && gameActive) {
@@ -1123,14 +1215,13 @@
                     const oppY = oppData.y || 0.05;
                     const oppCrash = oppData.crash || 0;
 
-                    // ৩ডি থ্রিজেএস ভিউপোর্টে অপোনেন্টের কার পজিশন অ্যানিমেট করা
                     if (aiCar) {
                         const targetX = lanePositions[oppLane];
                         aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.15);
                         aiCar.position.y = THREE.MathUtils.lerp(aiCar.position.y, oppY, 0.2);
 
                         if (oppCrash > 0) {
-                            aiCar.rotation.y += 0.25; // অপোনেন্ট ক্র্যাশ করলে তার গাড়িও স্পিন করবে
+                            aiCar.rotation.y += 0.25; 
                         } else {
                             aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.15);
                         }
@@ -1139,12 +1230,37 @@
                             wheel.rotation.x += currentSpeed * 0.45;
                         });
 
-                        // Z-axis রিলেটিভ পজিশন আপডেট
                         const zDifference = (aiDistance - playerDistance) * 0.15;
                         aiCar.position.z = -15 + zDifference;
                     }
                 }
             });
+        }
+
+        // --- ৩ সেকেন্ডের নিখুঁত সিনক্রোনাইজড রেস কাউন্টডাউন ---
+        function startLocalCountdown() {
+            const countdownOverlay = document.getElementById('start-countdown-overlay');
+            const countdownNumber = document.getElementById('countdown-number');
+            
+            countdownOverlay.style.display = 'flex';
+            
+            let count = 3;
+            countdownNumber.innerText = count;
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownNumber.innerText = count;
+                } else if (count === 0) {
+                    countdownNumber.innerText = "GO!";
+                } else {
+                    clearInterval(timer);
+                    countdownOverlay.style.display = 'none';
+                    
+                    // উভয়ের স্ক্রিনে একসাথে ড্রাইভ শুরু!
+                    gameActive = true; 
+                }
+            }, 1000);
         }
 
         // নিজের ডাটা ফায়ারবেসে রাইট করা
@@ -1163,7 +1279,6 @@
         function checkCollisionAndBumping() {
             if (!car || !aiCar || !gameActive) return;
 
-            // প্লেয়ার বনাম এআই সাইড ধাক্কা লাগলে
             const playerX = car.position.x;
             const aiX = aiCar.position.x;
             const xDistance = Math.abs(playerX - aiX);
@@ -1180,7 +1295,7 @@
                 camera.position.x += (Math.random() - 0.5) * 0.6;
             }
 
-            // এআই বনাম ট্রাফিক গাড়ির সংঘর্ষ (শুধু সিঙ্গেল প্লেয়ারে কার্যকর)
+            // এআই বনাম ট্রাফিক গাড়ির সংঘর্ষ
             if (raceMode === 'single') {
                 obstacles.forEach(obs => {
                     const obsX = obs.position.x;
@@ -1214,11 +1329,7 @@
                     }
                 };
 
-                // ফায়ারবেস ক্লাউডে ডিরেক্ট রাইট
-                database.ref('users/' + fUser.uid + '/stats').set(newStats)
-                    .then(() => {
-                        console.log("Copied Skill saved safely to Firebase Cloud!");
-                    });
+                database.ref('users/' + fUser.uid + '/stats').set(newStats);
             }
         }
 
@@ -1261,7 +1372,7 @@
                 saveLossToDatabase(); 
             }
             
-            // হোস্ট প্লেয়ার রেস শেষে ক্লাউড থেকে ম্যাচ নোডটি ক্লিন করবে
+            // হোস্ট প্লেয়ার রেস শেষে ফায়ারবেস থেকে রানিং ম্যাচ রেফারেন্স ডিলিট করবে
             if (raceMode === 'multiplayer' && isHost) {
                 database.ref(`matches/${matchId}`).remove();
             }
@@ -1273,6 +1384,7 @@
         function handleExit() {
             if (raceMode === 'multiplayer') {
                 if (oppSyncRef) oppSyncRef.off();
+                if (matchRootRef) matchRootRef.off();
                 if (isHost) {
                     database.ref(`matches/${matchId}`).remove();
                 }
@@ -1309,7 +1421,7 @@
                 handleSpeedLogic();
                 handleJumpPhysics();
                 handleAiDriving(); 
-                writeMyDataToFirebase(); // ফায়ারবেসে নিজের পজিশন প্রতি ফ্রেমে আপডেট করা হচ্ছে
+                writeMyDataToFirebase(); 
                 checkCollisionAndBumping(); 
 
                 // Race Result Check
