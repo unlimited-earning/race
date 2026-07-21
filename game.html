@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Neon Highway - Championship Port (Synced)</title>
+    <title>3D Neon Highway - Championship Port (Pro Sync)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -320,7 +320,7 @@
 </head>
 <body>
 
-    <!-- Symmetrical Synced Loading Screen Barrier -->
+    <!-- Synced Loading Screen Barrier -->
     <div id="sync-overlay">
         <div class="spinner"></div>
         <h2 id="sync-status-msg" style="color: #00ffcc; text-shadow: 0 0 10px #00ffcc; text-transform: uppercase; font-size: 20px; letter-spacing: 1px;">Synchronizing Race Engines...</h2>
@@ -376,7 +376,7 @@
         <span style="font-size: 11px; z-index: 6; opacity: 0.8;">🚦</span>
     </div>
 
-    <div id="instructions"> start </div>
+    <div id="instructions">A/D (Steer) | BRK (Brake) | GAS (Manual Drive) | JUMP (Jump) | POWR (Nitro)</div>
 
     <!-- On-Screen Controls -->
     <div class="controls-overlay">
@@ -431,6 +431,12 @@
         let trafficWheels = []; 
         let speedLines = []; 
         let exhaustFlames = []; 
+
+        // মোবাইল ডিভাইস ডিটেকশন ও পারফরম্যান্স সেটআপ
+        const isMobile = window.innerWidth < 600 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        
+        // ডেল্টা টাইম ভিত্তিক ফিজিক্স ইঞ্জিন ক্লক (Decoupled Physics Engine)
+        const clock = new THREE.Clock();
         
         let gameActive = false;
         let playerDistance = 0;
@@ -472,7 +478,7 @@
         // ফায়ারবেস রিয়েল-টাইম সিঙ্কিং রেফারেন্স
         let mySyncRef = null;
         let oppSyncRef = null;
-        let matchRootRef = null; // সিঙ্ক ক্লিনিং এর জন্য
+        let matchRootRef = null; 
 
         // AI learning variables
         let playerLaneShifts = 0;
@@ -490,15 +496,26 @@
                 scene.background = new THREE.Color(0x020208);
                 scene.fog = new THREE.FogExp2(0x020208, 0.0075);
 
-                camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-                camera.position.set(0, 3.2, 8.5); 
+                // --- ডায়নামিক মোবাইল ক্যামেরা কাস্টমাইজেশন (Responsive Mobile Camera) ---
+                const fov = isMobile ? 65 : 60; // মোবাইল ইউজারদের জন্য ওয়াইড FOV
+                camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, 0.1, 1000);
+                
+                if (isMobile) {
+                    // মোবাইলে ক্যামেরা গাড়ি থেকে আরও পেছনে এবং ওপরে রাখা হলো
+                    camera.position.set(0, 4.2, 10.5); 
+                } else {
+                    camera.position.set(0, 3.2, 8.5); 
+                }
                 camera.lookAt(0, 1.0, -15); 
 
-                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer = new THREE.WebGLRenderer({ antialias: !isMobile }); // মোবাইলের জন্য অ্যান্টিএলিয়াস অফ (পারফরম্যান্স বুস্ট)
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.setPixelRatio(window.devicePixelRatio);
-                renderer.shadowMap.enabled = true;
-                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                
+                // মোবাইলের ডিপিআই রেশিও ১.৫ এ লক করা হলো (WebGL rendering lag fix)
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2.0));
+                
+                // মোবাইল জিপিইউ এর চাপ কমাতে রিয়েল-টাইম সফট শ্যাডো ম্যাপ বন্ধ করা হলো
+                renderer.shadowMap.enabled = !isMobile;
                 container.appendChild(renderer.domElement);
 
                 const ambientLight = new THREE.AmbientLight(0x111125, 2.2);
@@ -506,7 +523,7 @@
 
                 const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
                 dirLight.position.set(10, 20, 10);
-                dirLight.castShadow = true;
+                if (!isMobile) dirLight.castShadow = true;
                 scene.add(dirLight);
 
                 createEnvironment();
@@ -515,12 +532,9 @@
                 createAiCar(); 
                 
                 setupInputEvents();
-                
-                // রেন্ডার লুপ ইনস্ট্যান্টলি স্টার্ট করা হলো
-                animate(); 
-
-                // অনলাইন মোডের সিনক্রোনাইজেশন চালু করা
                 initOnlineMatchSync(); 
+                
+                animate(); 
 
                 loadModelInBackground();
 
@@ -578,7 +592,7 @@
             road = new THREE.Mesh(roadGeo, roadMat);
             road.rotation.x = -Math.PI / 2;
             road.position.set(0, 0, -roadLength/2 + 10);
-            road.receiveShadow = true;
+            if (!isMobile) road.receiveShadow = true;
             scene.add(road);
 
             // Sidewalk curbs
@@ -606,9 +620,10 @@
                 });
             }
 
-            // Cyberpunk Buildings
+            // Cyberpunk Buildings (মোবাইলের ক্ষেত্রে বিল্ডিং সংখ্যা কম ২0টি জেনারেট করা হবে)
+            const buildingCount = isMobile ? 20 : 35;
             const colors = [0xff0055, 0x00ffcc, 0x9900ff, 0x0066ff];
-            for (let i = 0; i < 35; i++) {
+            for (let i = 0; i < buildingCount; i++) {
                 const bWidth = 5 + Math.random() * 5;
                 const bHeight = 15 + Math.random() * 35;
                 const bDepth = 6 + Math.random() * 6;
@@ -638,7 +653,7 @@
 
             // Starfield
             const starsGeo = new THREE.BufferGeometry();
-            const starsCount = 600;
+            const starsCount = isMobile ? 300 : 600; // মোবাইল ফ্রেন্ডলি স্টার কাউন্ট
             const starPositions = new Float32Array(starsCount * 3);
             for(let i=0; i<starsCount*3; i+=3) {
                 starPositions[i] = (Math.random() - 0.5) * 200;
@@ -651,28 +666,6 @@
             scene.add(stars);
         }
 
-        // --- Neon Speed Lines ---
-        function createSpeedLines() {
-            const lineCount = 35;
-            const lineGeo = new THREE.BoxGeometry(0.04, 0.04, 8);
-            const lineMat = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffcc, 
-                transparent: true, 
-                opacity: 0.0 
-            });
-
-            for (let i = 0; i < lineCount; i++) {
-                const line = new THREE.Mesh(lineGeo, lineMat);
-                line.position.set(
-                    (Math.random() - 0.5) * 35,
-                    Math.random() * 8 + 0.2,
-                    -Math.random() * 100
-                );
-                scene.add(line);
-                speedLines.push(line);
-            }
-        }
-
         // --- Create Instant Cyber Car ---
         function createInstantCyberCar() {
             car = new THREE.Group();
@@ -683,14 +676,14 @@
             const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0055, metalness: 0.9, roughness: 0.1 });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.y = 0.35;
-            body.castShadow = true;
+            if (!isMobile) body.castShadow = true;
             car.add(body);
 
             const cabinGeo = new THREE.BoxGeometry(1.05, 0.38, 1.4);
             const cabinMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.05, metalness: 0.95 });
             const cabin = new THREE.Mesh(cabinGeo, cabinMat);
             cabin.position.set(0, 0.7, -0.15);
-            cabin.castShadow = true;
+            if (!isMobile) cabin.castShadow = true;
             car.add(cabin);
 
             const spoilerGeo = new THREE.BoxGeometry(1.5, 0.05, 0.3);
@@ -753,7 +746,7 @@
             const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.95, roughness: 0.05 });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.y = 0.35;
-            body.castShadow = true;
+            if (!isMobile) body.castShadow = true;
             aiCar.add(body);
 
             const cabinGeo = new THREE.BoxGeometry(1.05, 0.38, 1.4);
@@ -821,8 +814,10 @@
 
                         newCar.traverse(function (child) {
                             if (child.isMesh) {
-                                child.castShadow = true;
-                                child.receiveShadow = true;
+                                if (!isMobile) {
+                                    child.castShadow = true;
+                                    child.receiveShadow = true;
+                                }
 
                                 const nameLower = child.name.toLowerCase();
                                 if (nameLower.includes('wheel') || nameLower.includes('tire')) {
@@ -878,14 +873,14 @@
             const bodyMat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.6, roughness: 0.3 });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.y = 0.35;
-            body.castShadow = true;
+            if (!isMobile) body.castShadow = true;
             trafficCarGroup.add(body);
             
             const cabinGeo = new THREE.BoxGeometry(1.15, 0.38, 1.4);
             const cabinMat = new THREE.MeshStandardMaterial({ color: 0x15151a, roughness: 0.1 });
             const cabin = new THREE.Mesh(cabinGeo, cabinMat);
             cabin.position.set(0, 0.72, -0.2); 
-            cabin.castShadow = true;
+            if (!isMobile) cabin.castShadow = true;
             trafficCarGroup.add(cabin);
             
             const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.25, 12);
@@ -928,14 +923,6 @@
             const minZ = -120 - (index * 45);
             obs.position.set(randomLane, 0.05, minZ);
             obs.rotation.y = 0;
-        }
-
-        // --- Trigger Jump ---
-        function triggerJump() {
-            if (!isJumping && gameActive) {
-                isJumping = true;
-                jumpVelocity = jumpStrength;
-            }
         }
 
         // --- Input Controls Setup ---
@@ -1013,10 +1000,10 @@
         }
 
         // --- Physics Logic ---
-        function handleJumpPhysics() {
+        function handleJumpPhysics(ts) {
             if (isJumping && car) {
-                car.position.y += jumpVelocity;
-                jumpVelocity -= gravity;
+                car.position.y += jumpVelocity * ts;
+                jumpVelocity -= gravity * ts;
 
                 if (car.position.y <= 0.05) {
                     car.position.y = 0.05;
@@ -1026,13 +1013,13 @@
             }
         }
 
-        // --- Speed Logic ---
-        function handleSpeedLogic() {
+        // --- Speed Logic (ডেল্টা টাইম এস্কেলিংসহ) ---
+        function handleSpeedLogic(ts) {
             let targetSpeed = 0;
 
             if (crashPenaltyTimer > 0) {
                 targetSpeed = 0.0;
-                crashPenaltyTimer -= 0.016; 
+                crashPenaltyTimer -= 0.016 * ts; 
             } else if (autoSpeedMode) {
                 if (isBraking) {
                     targetSpeed = 0.05; 
@@ -1049,22 +1036,21 @@
                 }
             }
 
-            // বুস্ট মেকানিজম (গতি ৭০০+ কিমি স্পর্শ করার বুস্ট রেট ২.০)
             let activeAcceleration = autoSpeedMode ? !isBraking : isAccelerating;
             if (isBoosting && powerCharge > 0 && activeAcceleration && currentSpeed > 0.1 && crashPenaltyTimer <= 0) {
                 targetSpeed = baseSpeed * 2.0; 
-                powerCharge = Math.max(0, powerCharge - 0.75); 
-                camera.fov = THREE.MathUtils.lerp(camera.fov, 82, 0.1); 
+                powerCharge = Math.max(0, powerCharge - 0.75 * ts); 
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 82, 0.1 * ts); 
                 playerBoostsUsed += 1;
             } else {
-                camera.fov = THREE.MathUtils.lerp(camera.fov, 60, 0.08);
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 60, 0.08 * ts);
             }
 
             if (!isBoosting || powerCharge <= 0) {
-                powerCharge = Math.min(100, powerCharge + 0.25);
+                powerCharge = Math.min(100, powerCharge + 0.25 * ts);
             }
 
-            let lerpFactor = isBraking ? 0.07 : 0.03;
+            let lerpFactor = (isBraking ? 0.07 : 0.03) * ts;
             currentSpeed = THREE.MathUtils.lerp(currentSpeed, targetSpeed, lerpFactor);
 
             if (car) {
@@ -1087,17 +1073,16 @@
             document.getElementById('power-bar').style.width = powerCharge + '%';
         }
 
-        // --- AI Bot Driving Logic (Single Player adaptive AI) ---
-        function handleAiDriving() {
+        // --- AI Bot Driving Logic ---
+        function handleAiDriving(ts) {
             if (!aiCar || !gameActive || raceMode === 'multiplayer') return;
 
             let aiTargetSpeed = baseSpeed;
 
             if (aiCrashPenaltyTimer > 0) {
                 aiTargetSpeed = 0;
-                aiCrashPenaltyTimer -= 0.016;
+                aiCrashPenaltyTimer -= 0.016 * ts;
             } else {
-                // --- প্লেয়ারের স্কিল কপি করা এআই মেকানিজম (Interactive AI Learner) ---
                 const learnedSkill = currentUser.stats.copiedSkill;
                 
                 let skillSpeedFactor = 1.0;
@@ -1109,7 +1094,6 @@
                     shiftProbability = Math.max(6, Math.min(25, Math.round(20 / (learnedSkill.laneShiftFrequency || 1))));
                 }
 
-                // রাবার-ব্যান্ডিং এর সাথে স্কিল ফ্যাক্টরের সংযোগ
                 let distDifference = playerDistance - aiDistance;
                 let speedCorrection = distDifference * 0.0015;
                 
@@ -1118,16 +1102,16 @@
             }
 
             if (currentSpeed < 0.05) {
-                aiSpeed = THREE.MathUtils.lerp(aiSpeed, 0, 0.05);
+                aiSpeed = THREE.MathUtils.lerp(aiSpeed, 0, 0.05 * ts);
             } else {
-                aiSpeed = THREE.MathUtils.lerp(aiSpeed, aiTargetSpeed, 0.03);
+                aiSpeed = THREE.MathUtils.lerp(aiSpeed, aiTargetSpeed, 0.03 * ts);
             }
 
             aiWheels.forEach(wheel => {
-                wheel.rotation.x += aiSpeed * 0.45;
+                wheel.rotation.x += aiSpeed * 0.45 * ts;
             });
 
-            // AI Traffic Avoidance & Swerving
+            // AI Traffic Avoidance
             let obstacleInLane = false;
             obstacles.forEach(obs => {
                 let obsRelativeZ = obs.position.z - aiCar.position.z;
@@ -1153,31 +1137,29 @@
             }
 
             const targetX = lanePositions[aiTargetLaneIndex];
-            aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.09);
+            aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.09 * ts);
             
             if (aiCrashPenaltyTimer > 0) {
-                aiCar.rotation.y += 0.22; 
+                aiCar.rotation.y += 0.22 * ts; 
             } else {
-                aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.09);
+                aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.09 * ts);
             }
 
             if (currentSpeed > 0.05) {
-                aiDistance += aiSpeed * 4.5; 
+                aiDistance += aiSpeed * 4.5 * ts; 
             }
 
             const zDifference = (aiDistance - playerDistance) * 0.15; 
             aiCar.position.z = -15 + zDifference; 
         }
 
-        // --- ফায়ারবেস রিয়েল-টাইম মাল্টিপ্লেয়ার সিঙ্ক ও রেডি বেরিয়ার ইঞ্জিন ---
+        // --- Multiplayer Sync Engine ---
         function initOnlineMatchSync() {
             if (raceMode !== 'multiplayer') {
-                // সিঙ্গেল প্লেয়ার হলে সরাসরি কাউন্টডাউন শুরু
                 startLocalCountdown();
                 return;
             }
 
-            // মাল্টিপ্লেয়ার সিনক্রোনাইজেশন ওভারলে প্রদর্শন
             document.getElementById('sync-overlay').style.display = 'flex';
             gameActive = false;
 
@@ -1191,18 +1173,13 @@
             // ১. নিজের ডিভাইস রেডি স্টেট ডাটাবেসে ট্রু (True) করা
             database.ref(`matches/${matchId}/${myNode}_ready`).set(true);
 
-            // ২. ফায়ারবেস লিসেনার দিয়ে উভয় ডিভাইস রেডি কি না অবজার্ভ করা (Perfect Synced Connection)
+            // ২. ফায়ারবেস লিসেনার দিয়ে উভয় ডিভাইস রেডি কি না অবজার্ভ করা (Symmetrical Barrier)
             matchRootRef.on('value', (snapshot) => {
                 const matchData = snapshot.val();
                 if (matchData && matchData.p1_ready === true && matchData.p2_ready === true) {
-                    // লিসেনার অফ করা (যাতে লুপ না হয়)
                     matchRootRef.off('value');
-                    
-                    // কানেক্টিং ওভারলে হাইড করা
                     document.getElementById('sync-overlay').style.display = 'none';
-
-                    // উভয়ের স্ক্রিনে একসাথে ৩ সেকেন্ডের কাউন্টডাউন শুরু করা
-                    startLocalCountdown();
+                    startLocalCountdown(); // দুই ডিভাইসেই একই সাথে কাউন্টডাউন শুরু
                 }
             });
 
@@ -1217,13 +1194,15 @@
 
                     if (aiCar) {
                         const targetX = lanePositions[oppLane];
-                        aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.15);
-                        aiCar.position.y = THREE.MathUtils.lerp(aiCar.position.y, oppY, 0.2);
+                        
+                        // ল্যাগ এড়াতে সিঙ্ক কোলাইড লার্নিং ইন্টারপোলেশন রেট বাড়ানো হলো
+                        aiCar.position.x = THREE.MathUtils.lerp(aiCar.position.x, targetX, 0.25);
+                        aiCar.position.y = THREE.MathUtils.lerp(aiCar.position.y, oppY, 0.25);
 
                         if (oppCrash > 0) {
                             aiCar.rotation.y += 0.25; 
                         } else {
-                            aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.15);
+                            aiCar.rotation.y = THREE.MathUtils.lerp(aiCar.rotation.y, (targetX - aiCar.position.x) * 0.04, 0.25);
                         }
 
                         aiWheels.forEach(wheel => {
@@ -1234,6 +1213,18 @@
                         aiCar.position.z = -15 + zDifference;
                     }
                 }
+            });
+        }
+
+        // ফায়ারবেসে নিজের পজিশন প্রতি ফ্রেমে আপডেট করা
+        function writeMyDataToFirebase() {
+            if (raceMode !== 'multiplayer' || !mySyncRef || !gameActive) return;
+
+            mySyncRef.set({
+                dist: playerDistance,
+                lane: targetLaneIndex,
+                y: car ? car.position.y : 0.05,
+                crash: crashPenaltyTimer
             });
         }
 
@@ -1256,27 +1247,14 @@
                 } else {
                     clearInterval(timer);
                     countdownOverlay.style.display = 'none';
-                    
-                    // উভয়ের স্ক্রিনে একসাথে ড্রাইভ শুরু!
+                    clock.getDelta(); // ক্লক ডেল্টা রিসেট
                     gameActive = true; 
                 }
             }, 1000);
         }
 
-        // নিজের ডাটা ফায়ারবেসে রাইট করা
-        function writeMyDataToFirebase() {
-            if (raceMode !== 'multiplayer' || !mySyncRef || !gameActive) return;
-
-            mySyncRef.set({
-                dist: playerDistance,
-                lane: targetLaneIndex,
-                y: car ? car.position.y : 0.05,
-                crash: crashPenaltyTimer
-            });
-        }
-
         // --- এআই এবং ট্রাফিকের সাথে কোলাইশন ও বাউন্স ফিজিক্স ---
-        function checkCollisionAndBumping() {
+        function checkCollisionAndBumping(ts) {
             if (!car || !aiCar || !gameActive) return;
 
             const playerX = car.position.x;
@@ -1292,7 +1270,7 @@
                     targetLaneIndex = Math.min(5, targetLaneIndex + 1);
                     aiTargetLaneIndex = Math.max(0, aiTargetLaneIndex - 1);
                 }
-                camera.position.x += (Math.random() - 0.5) * 0.6;
+                camera.position.x += (Math.random() - 0.5) * 0.6 * ts;
             }
 
             // এআই বনাম ট্রাফিক গাড়ির সংঘর্ষ
@@ -1372,7 +1350,6 @@
                 saveLossToDatabase(); 
             }
             
-            // হোস্ট প্লেয়ার রেস শেষে ফায়ারবেস থেকে রানিং ম্যাচ রেফারেন্স ডিলিট করবে
             if (raceMode === 'multiplayer' && isHost) {
                 database.ref(`matches/${matchId}`).remove();
             }
@@ -1404,25 +1381,30 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- Animation Loop ---
+        // --- Animation Loop (Delta-Time Decoupled) ---
         function animate() {
             requestAnimationFrame(animate);
+
+            // ডেল্টা টাইম গণনা ( decoupling FPS from speed )
+            const delta = clock.getDelta();
+            const timeScale = delta / 0.0166; // ৬০ এফপিএস বেস স্কেলিং
+            const ts = Math.min(3.0, timeScale); // চরম ল্যাগিং প্রোটেকশন ক্যাপ
 
             if (gameActive) {
                 const calculatedSpeed = Math.round(currentSpeed * 310);
                 
                 if (currentSpeed > 0.05) {
-                    playerDistance += currentSpeed * 4.5; 
+                    playerDistance += currentSpeed * 4.5 * ts; 
                     score = Math.round(playerDistance);
                     document.getElementById('score').innerText = score;
                     baseSpeed = 1.2 + (playerDistance * 0.00001); 
                 }
 
-                handleSpeedLogic();
-                handleJumpPhysics();
-                handleAiDriving(); 
+                handleSpeedLogic(ts);
+                handleJumpPhysics(ts);
+                handleAiDriving(ts); 
                 writeMyDataToFirebase(); 
-                checkCollisionAndBumping(); 
+                checkCollisionAndBumping(ts); 
 
                 // Race Result Check
                 if (playerDistance >= targetDistance) {
@@ -1441,7 +1423,7 @@
                 document.getElementById('player-meters').innerText = Math.round(playerDistance) + " / " + targetDistance + "m";
                 document.getElementById('ai-meters').innerText = Math.round(aiDistance) + " / " + targetDistance + "m";
 
-                // Mini-map icon dynamic updates
+                // Mini-map updates
                 const minimapHeight = window.innerHeight - 330; 
                 const pMinimapPos = 40 + (playerPercent / 100) * minimapHeight;
                 const aiMinimapPos = 40 + (aiPercent / 100) * minimapHeight;
@@ -1459,21 +1441,23 @@
                         lastLaneIndex = targetLaneIndex;
                     }
 
-                    car.position.x = THREE.MathUtils.lerp(car.position.x, targetX, 0.15);
+                    // মোবাইলের জন্য লেন শিফটিং আরো মসৃণ এবং দ্রুত করা হলো (0.15 * ts)
+                    car.position.x = THREE.MathUtils.lerp(car.position.x, targetX, 0.15 * ts);
                     
                     if (crashPenaltyTimer > 0) {
-                        car.rotation.y += 0.25; 
+                        car.rotation.y += 0.25 * ts; 
                     } else {
-                        car.rotation.y = THREE.MathUtils.lerp(car.rotation.y, (targetX - car.position.x) * 0.05, 0.15);
+                        car.rotation.y = THREE.MathUtils.lerp(car.rotation.y, (targetX - car.position.x) * 0.05, 0.15 * ts);
                     }
 
-                    camera.position.x = THREE.MathUtils.lerp(camera.position.x, car.position.x, 0.25);
+                    // ক্যামেরা ফাস্ট ফলো (0.25 * ts)
+                    camera.position.x = THREE.MathUtils.lerp(camera.position.x, car.position.x, 0.25 * ts);
                     camera.lookAt(camera.position.x, 1.0, -15);
                 }
 
                 // Camera Shake
                 if (calculatedSpeed > 400 && crashPenaltyTimer <= 0) {
-                    const intensity = (calculatedSpeed - 400) * 0.00012; 
+                    const intensity = (calculatedSpeed - 400) * 0.00012 * ts; 
                     camera.position.x += (Math.random() - 0.5) * intensity;
                     camera.position.y += (Math.random() - 0.5) * intensity;
                 }
@@ -1492,11 +1476,12 @@
                     });
                 }
 
-                // Neon Speed Lines
-                speedLines.forEach(line => {
+                // Neon Speed Lines (মোবাইলের স্পিড লাইন ১৫টিতে সীমাবদ্ধ করা হয়েছে)
+                const activeSpeedLines = isMobile ? speedLines.slice(0, 15) : speedLines;
+                activeSpeedLines.forEach(line => {
                     if (currentSpeed > 0.1) {
-                        line.material.opacity = THREE.MathUtils.lerp(line.material.opacity, (calculatedSpeed / 750) * 0.6, 0.1);
-                        line.position.z += currentSpeed * 2.5; 
+                        line.material.opacity = THREE.MathUtils.lerp(line.material.opacity, (calculatedSpeed / 750) * 0.6, 0.1 * ts);
+                        line.position.z += currentSpeed * 2.5 * ts; 
                         
                         if (line.position.z > 10) {
                             line.position.z = -120 - Math.random() * 80;
@@ -1504,38 +1489,38 @@
                             line.position.y = Math.random() * 8 + 0.2;
                         }
                     } else {
-                        line.material.opacity = THREE.MathUtils.lerp(line.material.opacity, 0.0, 0.1);
+                        line.material.opacity = THREE.MathUtils.lerp(line.material.opacity, 0.0, 0.1 * ts);
                     }
                 });
 
                 // Chaka spin
                 if (wheels.length > 0) {
                     wheels.forEach(wheel => {
-                        wheel.rotation.x += currentSpeed * 0.45; 
+                        wheel.rotation.x += currentSpeed * 0.45 * ts; 
                     });
                 }
 
                 if (trafficWheels.length > 0 && currentSpeed > 0.01) {
                     trafficWheels.forEach(wheel => {
-                        wheel.rotation.x += currentSpeed * 0.35;
+                        wheel.rotation.x += currentSpeed * 0.35 * ts;
                     });
                 }
 
                 // Scroll road line marks
                 roadLines.forEach(line => {
-                    line.position.z += currentSpeed;
+                    line.position.z += currentSpeed * ts;
                     if (line.position.z > 10) line.position.z = -120;
                 });
 
-                // Scroll buildings
+                // Scroll buildings (মোবাইল ও পিসিতে ফ্রেম ড্রপ ছাড়া স্ক্রলিং)
                 buildings.forEach(b => {
-                    b.position.z += currentSpeed;
+                    b.position.z += currentSpeed * ts;
                     if (b.position.z > 20) b.position.z = -roadLength + Math.random() * 20;
                 });
 
                 // Move & Collide obstacles 
                 obstacles.forEach((obs) => {
-                    obs.position.z += currentSpeed;
+                    obs.position.z += currentSpeed * ts;
                     
                     if (car && crashPenaltyTimer <= 0 && !isJumping) {
                         const playerX = car.position.x;
@@ -1547,7 +1532,7 @@
 
                         if (xDiff < 1.3 && zDiff < 2.5) {
                             crashPenaltyTimer = 1.5; 
-                            camera.position.x += (Math.random() - 0.5) * 1.5; 
+                            camera.position.x += (Math.random() - 0.5) * 1.5 * ts; 
                             resetObstacle(obs, 0); 
                         }
                     }
@@ -1558,7 +1543,7 @@
                 });
 
                 if (stars) {
-                    stars.position.z += currentSpeed * 0.1;
+                    stars.position.z += currentSpeed * 0.1 * ts;
                     if (stars.position.z > 100) stars.position.z = 0;
                 }
             }
