@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Highway - Login & Register</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #03030c;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Cyberpunk Neon Grid Background */
+        .bg-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 200, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 200, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+            background-position: center;
+            z-index: 1;
+        }
+        .bg-glow {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(255, 0, 85, 0.15) 0%, transparent 70%);
+            top: -100px;
+            left: -100px;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .bg-glow-right {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(0, 255, 200, 0.1) 0%, transparent 70%);
+            bottom: -150px;
+            right: -150px;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Main Container Card */
+        .auth-card {
+            width: 90%;
+            max-width: 420px;
+            background: rgba(10, 10, 25, 0.9);
+            border: 2px solid rgba(0, 255, 200, 0.3);
+            border-radius: 16px;
+            padding: 35px 30px;
+            box-shadow: 0 0 30px rgba(0, 255, 200, 0.15);
+            z-index: 5;
+            position: relative;
+            backdrop-filter: blur(10px);
+        }
+
+        .brand-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .brand-header h1 {
+            color: #00ffcc;
+            font-size: 28px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(0, 255, 200, 0.5);
+            text-transform: uppercase;
+        }
+        .brand-header p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
+        /* Form Tab Switchers */
+        .tab-group {
+            display: flex;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px 0;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.3s;
+            text-align: center;
+        }
+        .tab-btn.active {
+            background: rgba(0, 255, 200, 0.2);
+            color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 200, 0.5);
+        }
+
+        /* Form Fields */
+        .form-section {
+            display: none;
+        }
+        .form-section.active {
+            display: block;
+        }
+        .input-group {
+            margin-bottom: 18px;
+            position: relative;
+        }
+        .input-group label {
+            display: block;
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .input-group input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 12px 15px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: 0.2s;
+        }
+        .input-group input:focus {
+            border-color: #00ffcc;
+            box-shadow: 0 0 10px rgba(0, 255, 200, 0.25);
+            background: rgba(0, 255, 200, 0.02);
+        }
+
+        /* Actions */
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(45deg, #ff0055, #ff5500);
+            border: none;
+            color: white;
+            padding: 12px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 0, 85, 0.3);
+            transition: 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+        }
+        .submit-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 20px rgba(255, 0, 85, 0.5);
+        }
+        .submit-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Error/Success Feedbacks */
+        .msg-box {
+            font-size: 13px;
+            text-align: center;
+            margin-top: 15px;
+            min-height: 18px;
+            font-weight: bold;
+        }
+        .msg-error {
+            color: #ff0055;
+            text-shadow: 0 0 5px rgba(255, 0, 85, 0.3);
+        }
+        .msg-success {
+            color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 200, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Symmetrical Ambient Backgrounds -->
+    <div class="bg-grid"></div>
+    <div class="bg-glow"></div>
+    <div class="bg-glow-right"></div>
+
+    <!-- Login/Registration Card -->
+    <div class="auth-card">
+        <div class="brand-header">
+            <h1>NEON HIGHWAY</h1>
+            <p>Enter the Cyber Championship</p>
+        </div>
+
+        <!-- Form Tabs -->
+        <div class="tab-group">
+            <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">LOGIN</button>
+            <button class="tab-btn" id="tab-register" onclick="switchTab('register')">REGISTER</button>
+        </div>
+
+        <!-- Login Form Section -->
+        <div class="form-section active" id="sect-login">
+            <form id="form-login-el" onsubmit="handleLogin(event)">
+                <div class="input-group">
+                    <label for="login-username">USERNAME OR EMAIL</label>
+                    <input type="text" id="login-username" placeholder="Enter username/email" required autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label for="login-pass">PASSWORD</label>
+                    <input type="password" id="login-pass" placeholder="••••••••" required autocomplete="off">
+                </div>
+                <button type="submit" class="submit-btn">Enter Game</button>
+            </form>
+        </div>
+
+        <!-- Register Form Section -->
+        <div class="form-section" id="sect-register">
+            <form id="form-register-el" onsubmit="handleRegister(event)">
+                <div class="input-group">
+                    <label for="reg-username">USERNAME</label>
+                    <input type="text" id="reg-username" placeholder="Create username" required autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label for="reg-email">EMAIL ADDRESS</label>
+                    <input type="email" id="reg-email" placeholder="example@cyber.com" required autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label for="reg-pass">PASSWORD</label>
+                    <input type="password" id="reg-pass" placeholder="Minimum 6 characters" required autocomplete="off">
+                </div>
+                <button type="submit" class="submit-btn">Generate Driver License</button>
+            </form>
+        </div>
+
+        <!-- System Message Box -->
+        <div class="msg-box" id="feedback-msg"></div>
+    </div>
+
+    <script>
+        // --- Form Tab Switcher ---
+        function switchTab(type) {
+            // UI elements selection
+            const tabLogin = document.getElementById('tab-login');
+            const tabRegister = document.getElementById('tab-register');
+            const sectLogin = document.getElementById('sect-login');
+            const sectRegister = document.getElementById('sect-register');
+            const feedback = document.getElementById('feedback-msg');
+
+            feedback.innerText = ""; // ক্লিয়ার ফিডব্যাক মেসেজ
+
+            if (type === 'login') {
+                tabLogin.classList.add('active');
+                tabRegister.classList.remove('active');
+                sectLogin.classList.add('active');
+                sectRegister.classList.remove('active');
+            } else {
+                tabRegister.classList.add('active');
+                tabLogin.classList.remove('active');
+                sectRegister.classList.add('active');
+                sectLogin.classList.remove('active');
+            }
+        }
+
+        // --- Unique User ID Generator (USR-XXXXXX) ---
+        function generateUniqueUID() {
+            return 'USR-' + Math.floor(100000 + Math.random() * 900000);
+        }
+
+        // --- User Registration Handler ---
+        function handleRegister(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('reg-username').value.trim();
+            const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-pass').value;
+            const feedback = document.getElementById('feedback-msg');
+
+            // পাসওয়ার্ড লেন্থ চেক
+            if (password.length < 6) {
+                showFeedback("Password must be at least 6 characters long.", "error");
+                return;
+            }
+
+            // ডেটাবেস লোড বা এম্পটি অবজেক্ট জেনারেট
+            let userDb = JSON.parse(localStorage.getItem('users_db')) || [];
+
+            // ইউজারনেম বা ইমেইল অলরেডি এক্সিস্ট করে কি না ভ্যালিডেশন
+            const userExists = userDb.some(u => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === email.toLowerCase());
+            if (userExists) {
+                showFeedback("Username or Email already registered.", "error");
+                return;
+            }
+
+            // নতুন ইউনিক ইউজার ইউআইডি জেনারেট
+            const uid = generateUniqueUID();
+
+            // নতুন ড্রাইভার প্রোফাইল বা ডেটা এন্ট্রি
+            const newUser = {
+                uid: uid,
+                username: username,
+                email: email,
+                password: password,
+                stats: {
+                    wins: 0,
+                    losses: 0,
+                    copiedSkill: null // পরবর্তী এআই কপিং এর জন্য
+                }
+            };
+
+            userDb.push(newUser);
+            localStorage.setItem('users_db', JSON.stringify(userDb));
+
+            showFeedback(`Registration Success! ID: ${uid}`, "success");
+            
+            // রেজিস্ট্রেশন সম্পন্ন হলে স্বয়ংক্রিয়ভাবে লগইন ট্যাবে ফেরত নেওয়া
+            document.getElementById('form-register-el').reset();
+            setTimeout(() => {
+                switchTab('login');
+                document.getElementById('login-username').value = username;
+            }, 1800);
+        }
+
+        // --- User Login Handler ---
+        function handleLogin(event) {
+            event.preventDefault();
+
+            const input = document.getElementById('login-username').value.trim();
+            const pass = document.getElementById('login-pass').value;
+            const feedback = document.getElementById('feedback-msg');
+
+            const userDb = JSON.parse(localStorage.getItem('users_db')) || [];
+
+            // ইউজারনেম অথবা ইমেইল দ্বারা ইউজার ম্যাচিং ভ্যালিডেশন
+            const matchedUser = userDb.find(u => 
+                (u.username.toLowerCase() === input.toLowerCase() || u.email.toLowerCase() === input.toLowerCase()) && 
+                u.password === pass
+            );
+
+            if (!matchedUser) {
+                showFeedback("Invalid Username, Email or Password.", "error");
+                return;
+            }
+
+            // সেশন ডাটা সেভ করা (Current User Session)
+            localStorage.setItem('current_user', JSON.stringify({
+                uid: matchedUser.uid,
+                username: matchedUser.username,
+                stats: matchedUser.stats
+            }));
+
+            showFeedback("Identity Verified! Entering Cyberport...", "success");
+
+            // হোমপেজে (home.html) রিডিরেক্ট
+            setTimeout(() => {
+                window.location.href = "home.html";
+            }, 1200);
+        }
+
+        // --- Show Response Message ---
+        function showFeedback(text, type) {
+            const feedback = document.getElementById('feedback-msg');
+            feedback.innerText = text;
+            if (type === "error") {
+                feedback.className = "msg-box msg-error";
+            } else {
+                feedback.className = "msg-box msg-success";
+            }
+        }
+
+        // লগইন সেশন চেক (অলরেডি লগড-ইন থাকলে সরাসরি হোমে রিডিরেক্ট)
+        window.addEventListener('DOMContentLoaded', () => {
+            const session = localStorage.getItem('current_user');
+            if (session) {
+                window.location.href = "home.html";
+            }
+        });
+    </script>
+</body>
+</html>
